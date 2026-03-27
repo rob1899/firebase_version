@@ -94,7 +94,10 @@
             </div>
 
             <div class="p-4 pb-2 flex justify-between items-center shrink-0">
-                <h2 id="current-room-title" class="text-xl font-bold text-slate-800">Select a Room</h2>
+                <div class="flex items-center gap-3">
+                    <h2 id="current-room-title" class="text-xl font-bold text-slate-800">Select a Room</h2>
+                    <span id="main-temp-display" class="text-sm font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 shadow-sm hidden transition-all"></span>
+                </div>
                 <div class="flex gap-2">
                     <button onclick="copyRoom()" class="px-3 py-2 bg-white border border-slate-300 text-slate-700 rounded shadow-sm hover:bg-slate-50 flex items-center gap-2 text-sm transition-colors">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
@@ -258,7 +261,8 @@
             clipboard: null,
             roomClipboard: null, 
             vacation: null, 
-            demoMode: false // Native Firebase setup defaults to real mode
+            demoMode: false,
+            liveTemps: {} 
         };
         
         let editingBlockId = null;
@@ -300,6 +304,7 @@
         // --- INITIALIZATION ---
         async function init() {
             await loadConfigFromServer();
+            listenForLiveTemperatures(); // <-- Start listening to Firebase immediately
 
             // Populate defaults if database was empty
             if (!appState.rooms || appState.rooms.length === 0) appState.rooms = DEFAULT_ROOMS;
@@ -342,14 +347,20 @@
 
             appState.rooms.forEach(room => {
                 const btn = document.createElement('button');
-                btn.className = `w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${appState.selectedRoom === room.id ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-100'}`;
-                btn.innerText = room.name;
+                // Updated class to flex space-between
+                btn.className = `w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors flex justify-between items-center ${appState.selectedRoom === room.id ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-100'}`;
                 btn.onclick = () => selectRoom(room.id);
                 btn.id = `room-btn-${room.id}`;
+                
+                // Added the temperature span using the room.code
+                btn.innerHTML = `<span class="truncate">${room.name}</span> <span id="sidebar-temp-${room.code}" class="text-xs text-slate-400 font-bold ml-2 whitespace-nowrap"></span>`;
                 
                 if (room.floor === 'GF') gfContainer.appendChild(btn);
                 else ffContainer.appendChild(btn);
             });
+            
+            // If we already have live temps downloaded, populate them immediately
+            updateLiveTempDisplays();
         }
 
         function renderWeekView() {
@@ -391,6 +402,7 @@
             const room = appState.rooms.find(r => r.id === roomId);
             document.getElementById('current-room-title').innerText = room ? room.name : 'Unknown Room';
             renderAllTimelines();
+            updateLiveTempDisplays(); // <-- Update header when switching rooms
         }
 
         function getTempColor(temp) {
@@ -739,6 +751,50 @@
                 banner.classList.remove('hidden');
             } else {
                 banner.classList.add('hidden');
+            }
+        }
+
+        // ==========================================
+        //         LIVE TEMPERATURE SYNC
+        // ==========================================
+
+        function listenForLiveTemperatures() {
+            // Listen to the 'liveTemps' folder in Firebase
+            db.ref('liveTemps').on('value', (snapshot) => {
+                if (snapshot.exists()) {
+                    appState.liveTemps = snapshot.val();
+                    updateLiveTempDisplays();
+                }
+            });
+        }
+
+        function updateLiveTempDisplays() {
+            if (!appState.liveTemps) return;
+            
+            // 1. Update all rooms in the Sidebar
+            appState.rooms.forEach(room => {
+                const tempSpan = document.getElementById(`sidebar-temp-${room.code}`);
+                const roomData = appState.liveTemps[room.code];
+                
+                if (tempSpan && roomData && roomData.temp !== undefined) {
+                    tempSpan.innerText = `${roomData.temp}°C`;
+                }
+            });
+
+            // 2. Update the Main Header for the currently selected room
+            if (appState.selectedRoom) {
+                const selectedRoomObj = appState.rooms.find(r => r.id === appState.selectedRoom);
+                const mainTempSpan = document.getElementById('main-temp-display');
+                
+                if (selectedRoomObj && mainTempSpan) {
+                    const data = appState.liveTemps[selectedRoomObj.code];
+                    if (data && data.temp !== undefined) {
+                        mainTempSpan.innerText = `Current: ${data.temp}°C`;
+                        mainTempSpan.classList.remove('hidden');
+                    } else {
+                        mainTempSpan.classList.add('hidden');
+                    }
+                }
             }
         }
 

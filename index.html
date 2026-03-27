@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Heating Schedule Controller</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <style>
+        /* Custom scrollbar for a cleaner look */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        .timeline-grid {
+            background-image: linear-gradient(to right, #e2e8f0 1px, transparent 1px), linear-gradient(to right, #f8fafc 1px, transparent 1px);
+            background-size: 4.1666% 100%, 1.0416% 100%; /* Hours and 15-min intervals */
+        }
+        
+        .temp-bar {
+            transition: background-color 0.3s, box-shadow 0.2s;
+            touch-action: none; 
+        }
+        
+        .temp-bar:hover {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            filter: brightness(1.1);
+        }
+
+        .resize-handle {
+            width: 8px;
+            cursor: ew-resize;
+            background: rgba(255,255,255,0.3);
+            height: 100%;
+            position: absolute;
+            top: 0;
+        }
+        .resize-handle:hover { background: rgba(255,255,255,0.8); }
+        .resize-left { left: 0; border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
+        .resize-right { right: 0; border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 h-screen flex flex-col overflow-hidden font-sans">
+
+    <header class="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center shadow-sm z-10 shrink-0">
+        <div class="flex items-center gap-3">
+            <div class="bg-blue-600 p-2 rounded-lg">
+                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z"></path></svg>
+            </div>
+            <h1 class="text-xl font-bold text-slate-800">Heating Controller</h1>
+        </div>
+        <div class="flex items-center gap-4">
+            <button id="demo-toggle" onclick="toggleDemoMode()" class="px-4 py-2 bg-slate-200 text-slate-700 rounded-md text-sm font-medium hover:bg-slate-300 transition-colors hidden">
+                Demo Mode: ON
+            </button>
+            <button id="auth-btn" onclick="handleAuthClick()" class="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 shadow-sm transition-colors">
+                Connect Google Calendar
+            </button>
+            <button onclick="openVacationModal()" class="px-4 py-2 bg-amber-500 text-white rounded-md text-sm font-medium hover:bg-amber-600 shadow-sm transition-colors flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                Vacation
+            </button>
+            <button onclick="openSettingsModal()" class="px-4 py-2 bg-slate-600 text-white rounded-md text-sm font-medium hover:bg-slate-700 shadow-sm transition-colors flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                Settings
+            </button>
+        </div>
+    </header>
+
+    <div class="flex flex-1 overflow-hidden">
+        <aside class="w-64 bg-white border-r border-slate-200 flex flex-col overflow-y-auto shrink-0">
+            <div class="p-4 border-b border-slate-100">
+                <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Ground Floor</h2>
+                <div id="gf-rooms" class="space-y-1"></div>
+            </div>
+            <div class="p-4">
+                <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">First Floor</h2>
+                <div id="ff-rooms" class="space-y-1"></div>
+            </div>
+        </aside>
+
+        <main class="flex-1 flex flex-col bg-slate-50 relative overflow-hidden">
+            
+            <div id="vacation-banner" class="hidden bg-amber-100 border-b border-amber-200 p-4 text-amber-800 flex justify-between items-center shrink-0">
+                <div class="flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                    <span><strong>Vacation Mode Active:</strong> Calendar sync overrides normal schedules with <span id="vac-temp-disp"></span>°C from <span id="vac-date-disp"></span>.</span>
+                </div>
+                <button onclick="endVacation()" class="px-3 py-1 bg-amber-600 text-white rounded text-sm hover:bg-amber-700">Cancel Vacation</button>
+            </div>
+
+            <div class="p-4 pb-2 flex justify-between items-center shrink-0">
+                <h2 id="current-room-title" class="text-xl font-bold text-slate-800">Select a Room</h2>
+                <div class="flex gap-2">
+                    <button onclick="copyRoom()" class="px-3 py-2 bg-white border border-slate-300 text-slate-700 rounded shadow-sm hover:bg-slate-50 flex items-center gap-2 text-sm transition-colors">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        Copy Room
+                    </button>
+                    <button onclick="pasteRoom()" id="paste-room-btn" class="px-3 py-2 bg-white border border-slate-300 text-slate-400 rounded shadow-sm cursor-not-allowed flex items-center gap-2 text-sm transition-colors" disabled>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+                        Paste Room
+                    </button>
+                    
+                    <button onclick="importFromGoogle()" id="import-btn" class="px-3 py-2 bg-purple-600 text-white rounded shadow-sm hover:bg-purple-700 flex items-center gap-2 text-sm transition-colors">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                        Import from Google
+                    </button>
+
+                    <button onclick="syncToGoogle()" id="sync-btn" class="px-3 py-2 bg-green-600 text-white rounded shadow-sm hover:bg-green-700 flex items-center gap-2 text-sm hidden transition-colors">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                        Sync Current Room
+                    </button>
+                </div>
+            </div>
+
+            <div class="p-4 flex-1 overflow-y-auto">
+                <div id="week-view-container" class="space-y-2 pb-4">
+                    </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="edit-modal" class="fixed inset-0 bg-slate-900/50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-xl shadow-xl w-96 p-6">
+            <h3 class="text-lg font-bold mb-4">Set Temperature</h3>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-slate-700 mb-1">Temperature (°C)</label>
+                <div class="flex items-center gap-3">
+                    <input type="range" id="temp-slider" min="10" max="30" step="0.5" class="flex-1" oninput="document.getElementById('temp-value').innerText = this.value">
+                    <span id="temp-value" class="font-bold text-lg w-12 text-center">20</span>
+                </div>
+            </div>
+            <div class="flex gap-4 mb-6">
+                <div class="flex-1">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Start Time</label>
+                    <input type="time" id="edit-start" class="w-full border-slate-300 rounded-md shadow-sm p-2 border focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div class="flex-1">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">End Time</label>
+                    <input type="time" id="edit-end" class="w-full border-slate-300 rounded-md shadow-sm p-2 border focus:ring-blue-500 focus:border-blue-500">
+                </div>
+            </div>
+            <div class="flex justify-between">
+                <button onclick="deleteCurrentBlock()" class="px-4 py-2 text-red-600 hover:bg-red-50 rounded-md font-medium">Delete</button>
+                <div class="flex gap-2">
+                    <button onclick="closeModal('edit-modal')" class="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-md font-medium">Cancel</button>
+                    <button onclick="saveBlockEdit()" class="px-4 py-2 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="vacation-modal" class="fixed inset-0 bg-slate-900/50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-xl shadow-xl w-[400px] p-6">
+            <h3 class="text-lg font-bold mb-2">Configure Vacation</h3>
+            <p class="text-sm text-slate-500 mb-4">Set dates to temporarily override your schedule. Your normal schedules will automatically pause and resume.</p>
+            
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-slate-700 mb-1">Override Temperature (°C)</label>
+                <input type="number" id="vac-temp" value="15" min="5" max="30" class="w-full border-slate-300 rounded-md shadow-sm p-2 border">
+            </div>
+            <div class="flex gap-4 mb-6">
+                <div class="flex-1">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Start Date</label>
+                    <input type="date" id="vac-start" class="w-full border-slate-300 rounded-md shadow-sm p-2 border">
+                </div>
+                <div class="flex-1">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">End Date</label>
+                    <input type="date" id="vac-end" class="w-full border-slate-300 rounded-md shadow-sm p-2 border">
+                </div>
+            </div>
+            
+            <div class="flex justify-end gap-2">
+                <button onclick="closeModal('vacation-modal')" class="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-md font-medium">Cancel</button>
+                <button onclick="startVacation()" class="px-4 py-2 bg-amber-500 text-white rounded-md font-medium hover:bg-amber-600">Activate Vacation</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="settings-modal" class="fixed inset-0 bg-slate-900/50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-xl shadow-xl w-[800px] max-h-[90vh] flex flex-col">
+            <div class="p-6 border-b border-slate-200 flex justify-between items-center">
+                <h3 class="text-lg font-bold">Room & Calendar Settings</h3>
+                <button onclick="closeModal('settings-modal')" class="text-slate-400 hover:text-slate-600">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="p-6 flex-1 overflow-y-auto">
+                <div class="grid grid-cols-12 gap-4 mb-2 font-bold text-sm text-slate-600 px-2">
+                    <div class="col-span-3">UI Name</div>
+                    <div class="col-span-3">Room Code</div>
+                    <div class="col-span-4">Calendar ID</div>
+                    <div class="col-span-2">Floor</div>
+                </div>
+                <div id="settings-room-list" class="space-y-2">
+                    </div>
+                <button onclick="addSettingsRoom()" class="mt-4 px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 rounded-md border border-blue-200 font-medium flex items-center gap-1">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg> Add Room
+                </button>
+            </div>
+            <div class="p-6 border-t border-slate-200 flex justify-end gap-2 bg-slate-50 rounded-b-xl">
+                <button onclick="closeModal('settings-modal')" class="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-md font-medium transition-colors">Cancel</button>
+                <button onclick="saveSettings()" class="px-4 py-2 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700 shadow-sm transition-colors">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        //         1. CONFIGURATION SECTION
+        // ==========================================
+
+        // --- GOOGLE API CONFIGURATION ---
+        const CLIENT_ID = '793409424530-7il05gt5md7j26dgv9n5kvucbdqc8iu3.apps.googleusercontent.com';
+        const LOGIN_HINT = 'mader.rob@gmail.com'; 
+        const SCOPES = 'https://www.googleapis.com/auth/calendar';
+        const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest';
+
+        // --- FIREBASE CONFIGURATION ---
+        // REPLACE THIS BLOCK WITH YOUR KEYS FROM FIREBASE CONSOLE!
+		const firebaseConfig = {
+		  apiKey: "AIzaSyBUlX_Zuw8ZW5RUC8v5TXXkE9LRAgYngT4",
+		  authDomain: "heatingagendacontroller.firebaseapp.com",
+		  databaseURL: "https://heatingagendacontroller-default-rtdb.europe-west1.firebasedatabase.app",
+		  projectId: "heatingagendacontroller",
+		  storageBucket: "heatingagendacontroller.firebasestorage.app",
+		  messagingSenderId: "793409424530",
+		  appId: "1:793409424530:web:18ffd589c594ab09c0ea4b"
+		};
+
+        // Initialize Firebase
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = firebase.database();
+
+        // Default layout for a brand new, empty database
+        const DEFAULT_ROOMS = [
+            { id: '1', code: 'gf_livingroom', name: 'Living Room', floor: 'GF', calId: '291863072a9d603d0303b33eed21094f9725bc580cc7aebb5cf6013b097a5dce@group.calendar.google.com' },
+            { id: '2', code: 'ff_parents', name: 'Parents Bedroom', floor: 'FF', calId: '94c0864eb00c58a08b4072fe183c064e13051383c14474ce757f38fdc428f880@group.calendar.google.com' }
+        ];
+
+        const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+
+        // ==========================================
+        //         2. APP STATE & FIREBASE
+        // ==========================================
+        
+        let appState = {
+            rooms: [],
+            selectedRoom: null,
+            events: {}, 
+            clipboard: null,
+            roomClipboard: null, 
+            vacation: null, 
+            demoMode: false // Native Firebase setup defaults to real mode
+        };
+        
+        let editingBlockId = null;
+        let activeDayIndex = null;
+        let isDrawing = false;
+        let drawStartX = 0;
+        let isResizing = false;
+        let resizeBlock = null;
+        let resizeEdge = null; 
+
+        // --- FIREBASE SYNC FUNCTIONS ---
+        async function loadConfigFromServer() {
+            try {
+                const snapshot = await db.ref('heatingConfig').once('value');
+                if (snapshot.exists()) {
+                    const data = snapshot.val();
+                    if (data && data.rooms) {
+                        Object.assign(appState, data);
+                        console.log("Successfully loaded config from Firebase Cloud!");
+                    }
+                } else {
+                    console.log("Firebase database is empty. Starting fresh.");
+                }
+            } catch (e) { 
+                console.error("Firebase connection error:", e); 
+                alert("Failed to connect to Firebase. Check your firebaseConfig keys in the HTML!");
+            }
+        }
+
+        async function saveConfigToServer() {
+            try {
+                await db.ref('heatingConfig').set(appState);
+                console.log("Configuration saved to Firebase Cloud!");
+            } catch (e) {
+                console.error("Error saving to Firebase:", e);
+            }
+        }
+
+        // --- INITIALIZATION ---
+        async function init() {
+            await loadConfigFromServer();
+
+            // Populate defaults if database was empty
+            if (!appState.rooms || appState.rooms.length === 0) appState.rooms = DEFAULT_ROOMS;
+
+            appState.rooms.forEach(r => {
+                if(!appState.events) appState.events = {};
+                if(!appState.events[r.id]) appState.events[r.id] = {};
+                for(let i=0; i<7; i++) {
+                    if(!appState.events[r.id][i]) appState.events[r.id][i] = [];
+                }
+            });
+
+            if(appState.rooms.length > 0 && !appState.selectedRoom) appState.selectedRoom = appState.rooms[0].id;
+
+            renderSidebar();
+            renderWeekView();
+            checkVacationStatus();
+            if(appState.selectedRoom) selectRoom(appState.selectedRoom);
+            
+            // Boot Google Scripts
+            if (CLIENT_ID && CLIENT_ID.trim() !== "" && CLIENT_ID !== "YOUR_GOOGLE_CLIENT_ID_HERE.apps.googleusercontent.com") {
+                loadGoogleScripts();
+            } else {
+                alert("Google Client ID is missing. Google Calendar sync will not work.");
+            }
+
+            window.addEventListener('resize', renderAllTimelines);
+            document.addEventListener('mouseup', endInteraction);
+            document.addEventListener('mousemove', handleInteraction);
+        }
+
+        // ==========================================
+        //         3. UI RENDERING LOGIC
+        // ==========================================
+
+        function renderSidebar() {
+            const gfContainer = document.getElementById('gf-rooms');
+            const ffContainer = document.getElementById('ff-rooms');
+            gfContainer.innerHTML = ''; ffContainer.innerHTML = '';
+
+            appState.rooms.forEach(room => {
+                const btn = document.createElement('button');
+                btn.className = `w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${appState.selectedRoom === room.id ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-100'}`;
+                btn.innerText = room.name;
+                btn.onclick = () => selectRoom(room.id);
+                btn.id = `room-btn-${room.id}`;
+                
+                if (room.floor === 'GF') gfContainer.appendChild(btn);
+                else ffContainer.appendChild(btn);
+            });
+        }
+
+        function renderWeekView() {
+            const container = document.getElementById('week-view-container');
+            container.innerHTML = '';
+            
+            DAYS.forEach((day, index) => {
+                container.innerHTML += `
+                    <div class="bg-white rounded-lg shadow-sm border border-slate-200 px-3 py-1.5 flex items-center gap-3">
+                        <h3 class="font-bold text-sm text-slate-700 w-24 shrink-0">${day}</h3>
+                        
+                        <div class="relative flex-1 h-10 bg-slate-100 rounded border border-slate-300 timeline-grid overflow-hidden" id="timeline-${index}" data-day="${index}" onmousedown="startDraw(event, ${index})">
+                            <div class="absolute top-0 left-0 w-full h-4 pointer-events-none flex text-[9px] text-slate-400 pt-0.5 leading-none">
+                                ${Array.from({length: 24}, (_, i) => `<div style="width: ${100/24}%; border-left: 1px solid #cbd5e1; padding-left: 2px;">${i}:00</div>`).join('')}
+                            </div>
+                            <div id="blocks-container-${index}" class="absolute top-4 bottom-0 left-0 w-full"></div>
+                            <div id="draw-indicator-${index}" class="absolute top-4 bottom-0 bg-blue-500 opacity-30 hidden pointer-events-none border-l border-r border-blue-700"></div>
+                        </div>
+                        
+                        <div class="flex gap-1.5 shrink-0 justify-end">
+                            <button onclick="copyDay(${index})" class="px-2 py-1 text-[10px] bg-slate-100 text-slate-600 rounded hover:bg-slate-200 flex items-center gap-1 shadow-sm transition-colors"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg> Copy</button>
+                            <button onclick="pasteDay(${index})" id="paste-btn-${index}" class="px-2 py-1 text-[10px] bg-slate-100 text-slate-400 rounded cursor-not-allowed flex items-center gap-1 shadow-sm transition-colors" disabled><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg> Paste</button>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        function selectRoom(roomId) {
+            if(appState.selectedRoom && document.getElementById(`room-btn-${appState.selectedRoom}`)) {
+                document.getElementById(`room-btn-${appState.selectedRoom}`).classList.remove('bg-blue-50', 'text-blue-700');
+                document.getElementById(`room-btn-${appState.selectedRoom}`).classList.add('text-slate-600', 'hover:bg-slate-100');
+            }
+            appState.selectedRoom = roomId;
+            if(document.getElementById(`room-btn-${roomId}`)) {
+                document.getElementById(`room-btn-${roomId}`).classList.remove('text-slate-600', 'hover:bg-slate-100');
+                document.getElementById(`room-btn-${roomId}`).classList.add('bg-blue-50', 'text-blue-700');
+            }
+            const room = appState.rooms.find(r => r.id === roomId);
+            document.getElementById('current-room-title').innerText = room ? room.name : 'Unknown Room';
+            renderAllTimelines();
+        }
+
+        function getTempColor(temp) {
+            const stops = [
+                { t: 12, h: 240, s: 100, l: 30 }, 
+                { t: 18, h: 195, s: 100, l: 70 }, 
+                { t: 21, h: 120, s: 80,  l: 40 }, 
+                { t: 22, h: 30,  s: 100, l: 50 }, 
+                { t: 24, h: 0,   s: 100, l: 50 }  
+            ];
+            if (temp <= stops[0].t) return `hsl(${stops[0].h}, ${stops[0].s}%, ${stops[0].l}%)`;
+            if (temp >= stops[stops.length-1].t) return `hsl(${stops[stops.length-1].h}, ${stops[stops.length-1].s}%, ${stops[stops.length-1].l}%)`;
+            for (let i = 0; i < stops.length - 1; i++) {
+                if (temp >= stops[i].t && temp <= stops[i+1].t) {
+                    const ratio = (temp - stops[i].t) / (stops[i+1].t - stops[i].t);
+                    const h = stops[i].h + ratio * (stops[i+1].h - stops[i].h);
+                    const s = stops[i].s + ratio * (stops[i+1].s - stops[i].s);
+                    const l = stops[i].l + ratio * (stops[i+1].l - stops[i].l);
+                    return `hsl(${h}, ${s}%, ${l}%)`;
+                }
+            }
+        }
+
+        function renderAllTimelines() {
+            for(let i=0; i<7; i++) renderTimelineForDay(i);
+        }
+
+        function renderTimelineForDay(dayIndex) {
+            const container = document.getElementById(`blocks-container-${dayIndex}`);
+            if(!container) return;
+            container.innerHTML = '';
+            
+            if(!appState.selectedRoom || !appState.events[appState.selectedRoom]) return;
+            const events = appState.events[appState.selectedRoom][dayIndex] || [];
+            
+            events.forEach(ev => {
+                const block = document.createElement('div');
+                block.className = 'absolute top-0 bottom-0 temp-bar text-white text-[10px] font-bold flex items-center justify-center rounded-md cursor-pointer border border-black/10 shadow-sm';
+                block.style.left = `${(ev.start / 1440) * 100}%`;
+                block.style.width = `${((ev.end - ev.start) / 1440) * 100}%`;
+                block.style.backgroundColor = getTempColor(ev.temp);
+                block.innerText = `${ev.temp}°`;
+                
+                block.onmousedown = (e) => {
+                    if (e.target.classList.contains('resize-handle')) return; 
+                    block.dataset.clickStart = e.clientX;
+                };
+                block.onclick = (e) => {
+                    if (Math.abs(e.clientX - parseInt(block.dataset.clickStart)) < 5) openEditModal(ev.id, dayIndex);
+                };
+
+                const leftHandle = document.createElement('div');
+                leftHandle.className = 'resize-handle resize-left';
+                leftHandle.onmousedown = (e) => startResize(e, ev, 'left', dayIndex);
+                
+                const rightHandle = document.createElement('div');
+                rightHandle.className = 'resize-handle resize-right';
+                rightHandle.onmousedown = (e) => startResize(e, ev, 'right', dayIndex);
+
+                block.appendChild(leftHandle);
+                block.appendChild(rightHandle);
+                container.appendChild(block);
+            });
+        }
+
+        // ==========================================
+        //         4. SETTINGS MODAL
+        // ==========================================
+
+        function openSettingsModal() {
+            const list = document.getElementById('settings-room-list');
+            list.innerHTML = '';
+            appState.rooms.forEach(room => list.appendChild(createSettingsRow(room)));
+            document.getElementById('settings-modal').classList.remove('hidden');
+            document.getElementById('settings-modal').classList.add('flex');
+        }
+
+        function createSettingsRow(room = { id: 'evt_' + Date.now(), name: '', code: '', calId: '', floor: 'GF' }) {
+            const div = document.createElement('div');
+            div.className = 'grid grid-cols-12 gap-2 items-center room-setting-row';
+            div.dataset.id = room.id;
+            div.innerHTML = `
+                <input type="text" class="col-span-3 border border-slate-300 rounded p-2 text-sm s-name" placeholder="Living Room" value="${room.name}">
+                <input type="text" class="col-span-3 border border-slate-300 rounded p-2 text-sm s-code" placeholder="GF_Living" value="${room.code}">
+                <input type="text" class="col-span-4 border border-slate-300 rounded p-2 text-sm s-calid" placeholder="Calendar ID or blank to auto-detect" value="${room.calId}">
+                <div class="col-span-2 flex gap-2 items-center">
+                    <select class="border border-slate-300 rounded p-2 text-sm s-floor w-full">
+                        <option value="GF" ${room.floor === 'GF' ? 'selected' : ''}>GF</option>
+                        <option value="FF" ${room.floor === 'FF' ? 'selected' : ''}>FF</option>
+                    </select>
+                    <button onclick="this.parentElement.parentElement.remove()" class="text-red-500 hover:text-red-700 p-1"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+                </div>
+            `;
+            return div;
+        }
+
+        function addSettingsRoom() { document.getElementById('settings-room-list').appendChild(createSettingsRow()); }
+
+        async function saveSettings() {
+            const rows = document.querySelectorAll('.room-setting-row');
+            const newRooms = [];
+            rows.forEach(row => {
+                newRooms.push({
+                    id: row.dataset.id,
+                    name: row.querySelector('.s-name').value,
+                    code: row.querySelector('.s-code').value,
+                    calId: row.querySelector('.s-calid').value,
+                    floor: row.querySelector('.s-floor').value
+                });
+            });
+
+            appState.rooms = newRooms;
+            appState.rooms.forEach(r => {
+                if(!appState.events[r.id]) appState.events[r.id] = {};
+                for(let i=0; i<7; i++) {
+                    if(!appState.events[r.id][i]) appState.events[r.id][i] = [];
+                }
+            });
+
+            await saveConfigToServer();
+            closeModal('settings-modal');
+            renderSidebar();
+            
+            if(!appState.selectedRoom || !appState.rooms.find(r => r.id === appState.selectedRoom)) {
+                if(appState.rooms.length > 0) selectRoom(appState.rooms[0].id);
+            }
+        }
+
+        // ==========================================
+        //         5. INTERACTION (DRAW & RESIZE)
+        // ==========================================
+
+        function getTimelineMinutes(clientX, dayIndex) {
+            const rect = document.getElementById(`timeline-${dayIndex}`).getBoundingClientRect();
+            let x = clientX - rect.left;
+            x = Math.max(0, Math.min(x, rect.width)); 
+            const pct = x / rect.width;
+            let minutes = Math.round(pct * 1440);
+            return Math.round(minutes / 15) * 15; 
+        }
+
+        function startDraw(e, dayIndex) {
+            if (e.target.closest('.temp-bar')) return;
+            isDrawing = true; activeDayIndex = dayIndex; drawStartX = e.clientX;
+            const startMin = getTimelineMinutes(e.clientX, dayIndex);
+            const indicator = document.getElementById(`draw-indicator-${dayIndex}`);
+            indicator.style.display = 'block';
+            indicator.style.left = `${(startMin / 1440) * 100}%`;
+            indicator.style.width = '0%';
+            indicator.dataset.startMin = startMin;
+        }
+
+        function startResize(e, blockObj, edge, dayIndex) {
+            e.stopPropagation(); isResizing = true; resizeBlock = blockObj; resizeEdge = edge; activeDayIndex = dayIndex;
+        }
+
+        function handleInteraction(e) {
+            if (isDrawing && activeDayIndex !== null) {
+                const indicator = document.getElementById(`draw-indicator-${activeDayIndex}`);
+                const startMin = parseInt(indicator.dataset.startMin);
+                let currentMin = getTimelineMinutes(e.clientX, activeDayIndex);
+                let min = Math.min(startMin, currentMin);
+                let max = Math.max(startMin, currentMin);
+                indicator.style.left = `${(min / 1440) * 100}%`;
+                indicator.style.width = `${((max - min) / 1440) * 100}%`;
+            }
+            
+            if (isResizing && resizeBlock && activeDayIndex !== null) {
+                let currentMin = getTimelineMinutes(e.clientX, activeDayIndex);
+                if (resizeEdge === 'left') {
+                    if (currentMin >= resizeBlock.end - 15) currentMin = resizeBlock.end - 15;
+                    resizeBlock.start = currentMin;
+                } else {
+                    if (currentMin <= resizeBlock.start + 15) currentMin = resizeBlock.start + 15;
+                    resizeBlock.end = currentMin;
+                }
+                
+                const otherBlocks = appState.events[appState.selectedRoom][activeDayIndex].filter(b => b.id !== resizeBlock.id);
+                for (let b of otherBlocks) {
+                    if (resizeBlock.start < b.end && resizeBlock.end > b.start) {
+                        if (resizeEdge === 'left') resizeBlock.start = b.end;
+                        if (resizeEdge === 'right') resizeBlock.end = b.start;
+                    }
+                }
+                renderTimelineForDay(activeDayIndex);
+            }
+        }
+
+        async function endInteraction(e) {
+            if (isDrawing && activeDayIndex !== null) {
+                const indicator = document.getElementById(`draw-indicator-${activeDayIndex}`);
+                indicator.style.display = 'none';
+                const startMin = parseInt(indicator.dataset.startMin);
+                let currentMin = getTimelineMinutes(e.clientX, activeDayIndex);
+                let min = Math.min(startMin, currentMin); let max = Math.max(startMin, currentMin);
+                
+                if (max - min >= 15) {
+                    const newEvent = { id: 'evt_' + Date.now(), start: min, end: max, temp: 20 };
+                    appState.events[appState.selectedRoom][activeDayIndex].push(newEvent);
+                    openEditModal(newEvent.id, activeDayIndex);
+                }
+                isDrawing = false;
+            }
+            
+            if (isResizing) {
+                isResizing = false; resizeBlock = null; resizeEdge = null; activeDayIndex = null;
+                await saveConfigToServer();
+                queueGoogleSync();
+            }
+        }
+
+        // ==========================================
+        //         6. MODALS, EDITING, COPY/PASTE
+        // ==========================================
+
+        function minToTime(minutes) {
+            return `${Math.floor(minutes / 60).toString().padStart(2, '0')}:${(minutes % 60).toString().padStart(2, '0')}`;
+        }
+        function timeToMin(timeStr) {
+            const [h, m] = timeStr.split(':'); return parseInt(h) * 60 + parseInt(m);
+        }
+
+        function openEditModal(eventId, dayIndex) {
+            editingBlockId = eventId; activeDayIndex = dayIndex;
+            const event = appState.events[appState.selectedRoom][dayIndex].find(e => e.id === eventId);
+            document.getElementById('temp-slider').value = event.temp;
+            document.getElementById('temp-value').innerText = event.temp;
+            document.getElementById('edit-start').value = minToTime(event.start);
+            document.getElementById('edit-end').value = minToTime(event.end);
+            
+            document.getElementById('edit-modal').classList.remove('hidden');
+            document.getElementById('edit-modal').classList.add('flex');
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.add('hidden');
+            document.getElementById(modalId).classList.remove('flex');
+        }
+
+        async function saveBlockEdit() {
+            const event = appState.events[appState.selectedRoom][activeDayIndex].find(e => e.id === editingBlockId);
+            event.temp = parseFloat(document.getElementById('temp-slider').value);
+            const newStart = timeToMin(document.getElementById('edit-start').value);
+            const newEnd = timeToMin(document.getElementById('edit-end').value);
+            if (newStart < newEnd) { event.start = newStart; event.end = newEnd; }
+            
+            closeModal('edit-modal');
+            renderTimelineForDay(activeDayIndex);
+            await saveConfigToServer();
+            queueGoogleSync();
+        }
+
+        async function deleteCurrentBlock() {
+            appState.events[appState.selectedRoom][activeDayIndex] = appState.events[appState.selectedRoom][activeDayIndex].filter(e => e.id !== editingBlockId);
+            closeModal('edit-modal');
+            renderTimelineForDay(activeDayIndex);
+            await saveConfigToServer();
+            queueGoogleSync();
+        }
+
+        function copyDay(dayIndex) {
+            appState.clipboard = JSON.parse(JSON.stringify(appState.events[appState.selectedRoom][dayIndex]));
+            for(let i=0; i<7; i++) {
+                const pasteBtn = document.getElementById(`paste-btn-${i}`);
+                if(pasteBtn) {
+                    pasteBtn.disabled = false;
+                    pasteBtn.classList.remove('text-slate-400', 'cursor-not-allowed');
+                    pasteBtn.classList.add('text-slate-700', 'hover:bg-slate-200');
+                }
+            }
+        }
+
+        async function pasteDay(dayIndex) {
+            if (!appState.clipboard) return;
+            appState.events[appState.selectedRoom][dayIndex] = appState.clipboard.map(e => ({ ...e, id: 'evt_' + Math.random().toString(36).substr(2, 9) }));
+            renderTimelineForDay(dayIndex);
+            await saveConfigToServer();
+            queueGoogleSync();
+        }
+
+        function copyRoom() {
+            if(!appState.selectedRoom) return;
+            appState.roomClipboard = JSON.parse(JSON.stringify(appState.events[appState.selectedRoom]));
+            const pasteBtn = document.getElementById('paste-room-btn');
+            pasteBtn.disabled = false;
+            pasteBtn.classList.remove('text-slate-400', 'cursor-not-allowed');
+            pasteBtn.classList.add('text-slate-700', 'hover:bg-slate-50');
+            const originalText = pasteBtn.innerHTML;
+            pasteBtn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Copied!';
+            setTimeout(() => pasteBtn.innerHTML = originalText, 2000);
+        }
+
+        async function pasteRoom() {
+            if (!appState.roomClipboard || !appState.selectedRoom) return;
+            for(let i=0; i<7; i++) {
+                appState.events[appState.selectedRoom][i] = (appState.roomClipboard[i] || []).map(e => ({ ...e, id: 'evt_' + Math.random().toString(36).substr(2, 9) }));
+            }
+            renderAllTimelines();
+            await saveConfigToServer();
+            queueGoogleSync();
+        }
+
+        // ==========================================
+        //         7. VACATION MODE
+        // ==========================================
+
+        function openVacationModal() {
+            if (appState.vacation) {
+                document.getElementById('vac-start').value = appState.vacation.start;
+                document.getElementById('vac-end').value = appState.vacation.end;
+                document.getElementById('vac-temp').value = appState.vacation.temp;
+            }
+            document.getElementById('vacation-modal').classList.remove('hidden');
+            document.getElementById('vacation-modal').classList.add('flex');
+        }
+
+        async function startVacation() {
+            const temp = document.getElementById('vac-temp').value;
+            const start = document.getElementById('vac-start').value;
+            const end = document.getElementById('vac-end').value;
+            if(!start || !end) { alert("Please set both start and end dates."); return; }
+            if (new Date(start) > new Date(end)) { alert("End date must be after start date."); return; }
+
+            appState.vacation = { start, end, temp: parseFloat(temp) };
+            
+            closeModal('vacation-modal');
+            checkVacationStatus();
+            await saveConfigToServer();
+            queueGoogleSync();
+        }
+
+        async function endVacation() {
+            appState.vacation = null;
+            checkVacationStatus();
+            await saveConfigToServer();
+            queueGoogleSync();
+        }
+
+        function checkVacationStatus() {
+            const banner = document.getElementById('vacation-banner');
+            if (appState.vacation) {
+                document.getElementById('vac-temp-disp').innerText = appState.vacation.temp;
+                const sDate = new Date(appState.vacation.start).toLocaleDateString();
+                const eDate = new Date(appState.vacation.end).toLocaleDateString();
+                document.getElementById('vac-date-disp').innerText = `${sDate} to ${eDate}`;
+                banner.classList.remove('hidden');
+            } else {
+                banner.classList.add('hidden');
+            }
+        }
+
+        // ==========================================
+        //         8. GOOGLE CALENDAR SYNC
+        // ==========================================
+        
+        let tokenClient; let gapiInited = false; let gisInited = false; let syncTimeout = null;
+
+        function loadGoogleScripts() {
+            if (!document.getElementById('gapi-script')) {
+                const gapiScript = document.createElement('script');
+                gapiScript.id = 'gapi-script';
+                gapiScript.src = 'https://apis.google.com/js/api.js';
+                gapiScript.onload = () => gapi.load('client', async () => {
+                    try {
+                        await gapi.client.init({ discoveryDocs: [DISCOVERY_DOC] });
+                        gapiInited = true;
+                        console.log("GAPI loaded successfully.");
+                    } catch (err) {
+                        console.error("GAPI Init Error:", err);
+                    }
+                });
+                document.body.appendChild(gapiScript);
+
+                const gisScript = document.createElement('script');
+                gisScript.src = 'https://accounts.google.com/gsi/client';
+                gisScript.onload = () => {
+                    try {
+                        let tokenParams = { 
+                            client_id: CLIENT_ID, 
+                            scope: SCOPES, 
+                            prompt: '',
+                            callback: handleAuthResponse 
+                        };
+                        if (LOGIN_HINT && LOGIN_HINT.trim() !== "") {
+                            tokenParams.login_hint = LOGIN_HINT.trim();
+                        }
+
+                        tokenClient = google.accounts.oauth2.initTokenClient(tokenParams);
+                        gisInited = true;
+                        console.log("GIS loaded successfully.");
+                    } catch (err) {
+                        console.error("GIS Init Error:", err);
+                    }
+                };
+                document.body.appendChild(gisScript);
+            }
+        }
+
+        function handleAuthClick() {
+            if (!gisInited || !gapiInited) return alert("Scripts loading. Please wait a second.");
+            tokenClient.requestAccessToken({prompt: ''});
+        }
+
+        async function handleAuthResponse(resp) {
+            if (resp.error !== undefined) throw (resp);
+            gapi.client.setToken({ access_token: resp.access_token });
+            document.getElementById('auth-btn').innerText = 'Connected';
+            document.getElementById('auth-btn').classList.replace('bg-blue-600', 'bg-green-600');
+            document.getElementById('sync-btn').classList.remove('hidden');
+        }
+
+        function queueGoogleSync() {
+            if (syncTimeout) clearTimeout(syncTimeout);
+            syncTimeout = setTimeout(() => {
+                document.getElementById('sync-btn').classList.add('animate-pulse', 'bg-amber-500');
+                document.getElementById('sync-btn').innerHTML = 'Syncing needed...';
+            }, 1000);
+        }
+
+        function getNextWeekday(baseDate, dayIndex) {
+            const d = new Date(baseDate);
+            d.setHours(0,0,0,0);
+            const currentJsDay = d.getDay(); 
+            const currentAppDay = currentJsDay === 0 ? 6 : currentJsDay - 1;
+            let diff = dayIndex - currentAppDay;
+            if (diff < 0) diff += 7;
+            d.setDate(d.getDate() + diff);
+            return d;
+        }
+
+        function formatUntilDate(d) {
+            const pad = n => String(n).padStart(2, '0');
+            return `${d.getUTCFullYear()}${pad(d.getUTCMonth()+1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
+        }
+
+        function getGoogleDateTime(baseDate, totalMinutes) {
+            const dt = new Date(baseDate);
+            if (totalMinutes >= 1440) { dt.setDate(dt.getDate() + 1); totalMinutes = 0; }
+            const y = dt.getFullYear(); const m = String(dt.getMonth() + 1).padStart(2, '0'); const dStr = String(dt.getDate()).padStart(2, '0');
+            const hrs = String(Math.floor(totalMinutes / 60)).padStart(2, '0'); const mins = String(totalMinutes % 60).padStart(2, '0');
+            return `${y}-${m}-${dStr}T${hrs}:${mins}:00`;
+        }
+
+        async function syncToGoogle() {
+            const roomId = appState.selectedRoom;
+            const room = appState.rooms.find(r => r.id === roomId);
+
+            if (!room || !room.calId) return alert(`No Calendar ID configured for this room.`);
+
+            const btn = document.getElementById('sync-btn');
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = 'Wiping old events...';
+            btn.classList.remove('animate-pulse', 'bg-amber-500');
+            
+            try {
+                let pageToken = null;
+                do {
+                    const res = await gapi.client.calendar.events.list({ calendarId: room.calId, maxResults: 2500, pageToken: pageToken });
+                    const eventsToDelete = res.result.items;
+                    for (let e of eventsToDelete) {
+                        try { await gapi.client.calendar.events.delete({ calendarId: room.calId, eventId: e.id }); } 
+                        catch(err) { console.warn('Could not delete', e.id); }
+                    }
+                    pageToken = res.result.nextPageToken;
+                } while (pageToken);
+
+                btn.innerHTML = 'Uploading new schedule...';
+
+                const rruleDays = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
+                const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                const today = new Date(); today.setHours(0,0,0,0);
+                
+                let vStart = null, vEnd = null, isVacationActiveAndFuture = false;
+                if (appState.vacation) {
+                    vStart = new Date(appState.vacation.start); vStart.setHours(0,0,0,0);
+                    vEnd = new Date(appState.vacation.end); vEnd.setHours(23,59,59,999);
+                    if (vEnd >= today) isVacationActiveAndFuture = true;
+                }
+
+                for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
+                    const dailyEvents = appState.events[roomId][dayIndex];
+                    for (let ev of dailyEvents) {
+                        let eventPhases = [];
+                        const firstOccurrence = getNextWeekday(today, dayIndex);
+
+                        if (!isVacationActiveAndFuture) {
+                            eventPhases.push({ startBase: firstOccurrence, until: null });
+                        } else {
+                            if (firstOccurrence < vStart) {
+                                const untilDate = new Date(vStart); untilDate.setSeconds(-1); 
+                                eventPhases.push({ startBase: firstOccurrence, until: untilDate });
+                            }
+                            if (firstOccurrence <= vEnd) {
+                                const afterVacationBase = new Date(vEnd.getTime() + 1); 
+                                const postVacation = getNextWeekday(afterVacationBase, dayIndex);
+                                eventPhases.push({ startBase: postVacation, until: null });
+                            }
+                        }
+
+                        for (let phase of eventPhases) {
+                            let safeStartBase = new Date(phase.startBase);
+                            
+                            // DST BUG FIX
+                            const offsetStart = new Date(safeStartBase.getFullYear(), safeStartBase.getMonth(), safeStartBase.getDate(), 0, 0, 0).getTimezoneOffset();
+                            const offsetEnd = new Date(safeStartBase.getFullYear(), safeStartBase.getMonth(), safeStartBase.getDate(), 23, 0, 0).getTimezoneOffset();
+                            if (offsetStart !== offsetEnd) safeStartBase.setDate(safeStartBase.getDate() - 7);
+                            
+                            const startTimeStr = getGoogleDateTime(safeStartBase, ev.start);
+                            const endTimeStr = getGoogleDateTime(safeStartBase, ev.end);
+                            
+                            let rrule = `RRULE:FREQ=WEEKLY;BYDAY=${rruleDays[dayIndex]}`;
+                            if (phase.until) rrule += `;UNTIL=${formatUntilDate(phase.until)}`;
+                            
+                            const googleEvent = {
+                                summary: ev.temp.toString(),
+                                location: room.code,
+                                start: { dateTime: startTimeStr, timeZone: userTimeZone },
+                                end: { dateTime: endTimeStr, timeZone: userTimeZone },
+                                recurrence: [rrule]
+                            };
+                            await gapi.client.calendar.events.insert({ calendarId: room.calId, resource: googleEvent });
+                        }
+                    }
+                }
+
+                if (isVacationActiveAndFuture) {
+                    const vEndDt = new Date(appState.vacation.end);
+                    vEndDt.setDate(vEndDt.getDate() + 1); 
+                    
+                    const pad = n => String(n).padStart(2, '0');
+                    const vEndDateStr = `${vEndDt.getFullYear()}-${pad(vEndDt.getMonth() + 1)}-${pad(vEndDt.getDate())}`;
+
+                    const vacationEvent = {
+                        summary: appState.vacation.temp.toString() + '° (Vacation)',
+                        location: room.code,
+                        start: { date: appState.vacation.start },
+                        end: { date: vEndDateStr }
+                    };
+                    await gapi.client.calendar.events.insert({ calendarId: room.calId, resource: vacationEvent });
+                }
+                
+                btn.innerHTML = 'Synced Successfully';
+                setTimeout(() => { btn.innerHTML = originalHTML; }, 3000);
+
+            } catch (err) {
+                console.error("Sync Error:", err);
+                btn.innerHTML = 'Sync Failed';
+                btn.classList.add('bg-red-600');
+                setTimeout(() => { btn.innerHTML = originalHTML; btn.classList.remove('bg-red-600'); }, 3000);
+            }
+        }
+
+        async function importFromGoogle() {
+            const roomId = appState.selectedRoom;
+            const room = appState.rooms.find(r => r.id === roomId);
+
+            if (!room || !room.calId) return alert("No Calendar ID configured for this room.");
+            if (!confirm(`This will permanently overwrite the UI schedule for ${room.name} with whatever is currently on Google Calendar. Proceed?`)) return;
+
+            const btn = document.getElementById('import-btn');
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = 'Importing...';
+            btn.classList.add('animate-pulse');
+
+            try {
+                const res = await gapi.client.calendar.events.list({ calendarId: room.calId, singleEvents: false, maxResults: 2500, showDeleted: false });
+                const events = res.result.items;
+                
+                for(let i=0; i<7; i++) appState.events[roomId][i] = [];
+
+                events.forEach(gEv => {
+                    if(gEv.summary && gEv.summary.includes('Vacation')) return;
+
+                    if(gEv.recurrence && gEv.recurrence[0]) {
+                        const rrule = gEv.recurrence[0];
+                        const dayMatch = rrule.match(/BYDAY=([^;]+)/);
+                        
+                        if(dayMatch && gEv.start && gEv.end) {
+                            const daysMap = { 'MO':0, 'TU':1, 'WE':2, 'TH':3, 'FR':4, 'SA':5, 'SU':6 };
+                            const days = dayMatch[1].split(','); 
+                            
+                            days.forEach(dayStr => {
+                                const cleanDay = dayStr.slice(-2); 
+                                const dIdx = daysMap[cleanDay];
+                                
+                                if(dIdx !== undefined) {
+                                    let startMins = 0; let endMins = 1440;
+                                    
+                                    if (gEv.start.dateTime && gEv.end.dateTime) {
+                                        const startDt = new Date(gEv.start.dateTime);
+                                        const endDt = new Date(gEv.end.dateTime);
+                                        startMins = startDt.getHours() * 60 + startDt.getMinutes();
+                                        endMins = endDt.getHours() * 60 + endDt.getMinutes();
+                                        if (endMins === 0 && startMins > 0) endMins = 1440; 
+                                    }
+
+                                    const temp = parseFloat(gEv.summary) || 20;
+
+                                    appState.events[roomId][dIdx].push({
+                                        id: 'evt_' + Date.now() + Math.random(),
+                                        start: startMins,
+                                        end: endMins,
+                                        temp: temp
+                                    });
+                                }
+                            });
+                        }
+                    }
+                });
+
+                renderAllTimelines();
+                await saveConfigToServer();
+                
+                btn.classList.remove('animate-pulse');
+                btn.innerHTML = 'Imported!';
+                setTimeout(() => { btn.innerHTML = originalHTML; }, 3000);
+
+            } catch (err) {
+                console.error("Import Error:", err);
+                btn.classList.remove('animate-pulse');
+                btn.innerHTML = 'Import Failed';
+                btn.classList.add('bg-red-600');
+                setTimeout(() => { btn.innerHTML = originalHTML; btn.classList.remove('bg-red-600'); }, 3000);
+            }
+        }
+
+        // Start App
+        init();
+    </script>
+</body>
+</html>

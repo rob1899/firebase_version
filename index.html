@@ -32,7 +32,7 @@
         }
 
         .resize-handle {
-            width: 8px;
+            width: 12px; /* Wider for touch */
             cursor: ew-resize;
             background: rgba(255,255,255,0.3);
             height: 100%;
@@ -40,8 +40,18 @@
             top: 0;
         }
         .resize-handle:hover { background: rgba(255,255,255,0.8); }
+
         .resize-left { left: 0; border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
         .resize-right { right: 0; border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
+
+        @media (max-width: 768px) {
+            .temp-bar {
+                font-size: 12px; /* Larger text on mobile */
+            }
+            .resize-handle {
+                width: 16px; /* Even wider on mobile */
+            }
+        }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 h-screen flex flex-col overflow-hidden font-sans">
@@ -72,7 +82,7 @@
     </header>
 
     <div class="flex flex-1 overflow-hidden">
-        <aside class="w-64 bg-white border-r border-slate-200 flex flex-col overflow-y-auto shrink-0">
+        <aside class="w-48 md:w-64 bg-white border-r border-slate-200 flex flex-col overflow-y-auto shrink-0">
             <div class="p-4 border-b border-slate-100">
                 <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Ground Floor</h2>
                 <div id="gf-rooms" class="space-y-1"></div>
@@ -334,6 +344,8 @@
             window.addEventListener('resize', renderAllTimelines);
             document.addEventListener('mouseup', endInteraction);
             document.addEventListener('mousemove', handleInteraction);
+            document.addEventListener('touchend', endInteractionTouch);
+            document.addEventListener('touchmove', handleInteractionTouch);
         }
 
         // ==========================================
@@ -372,7 +384,7 @@
                     <div class="bg-white rounded-lg shadow-sm border border-slate-200 px-3 py-1.5 flex items-center gap-3">
                         <h3 class="font-bold text-sm text-slate-700 w-24 shrink-0">${day}</h3>
                         
-                        <div class="relative flex-1 h-10 bg-slate-100 rounded border border-slate-300 timeline-grid overflow-hidden" id="timeline-${index}" data-day="${index}" onmousedown="startDraw(event, ${index})">
+                        <div class="relative flex-1 h-16 md:h-10 bg-slate-100 rounded border border-slate-300 timeline-grid overflow-hidden" id="timeline-${index}" data-day="${index}" onmousedown="startDraw(event, ${index})" ontouchstart="startDrawTouch(event, ${index})">
                             <div class="absolute top-0 left-0 w-full h-4 pointer-events-none flex text-[9px] text-slate-400 pt-0.5 leading-none">
                                 ${Array.from({length: 24}, (_, i) => `<div style="width: ${100/24}%; border-left: 1px solid #cbd5e1; padding-left: 2px;">${i}:00</div>`).join('')}
                             </div>
@@ -440,7 +452,7 @@
             
             events.forEach(ev => {
                 const block = document.createElement('div');
-                block.className = 'absolute top-0 bottom-0 temp-bar text-white text-[10px] font-bold flex items-center justify-center rounded-md cursor-pointer border border-black/10 shadow-sm';
+                block.className = 'absolute top-0 bottom-0 temp-bar text-white text-sm md:text-[10px] font-bold flex items-center justify-center rounded-md cursor-pointer border border-black/10 shadow-sm';
                 block.style.left = `${(ev.start / 1440) * 100}%`;
                 block.style.width = `${((ev.end - ev.start) / 1440) * 100}%`;
                 block.style.backgroundColor = getTempColor(ev.temp);
@@ -457,10 +469,12 @@
                 const leftHandle = document.createElement('div');
                 leftHandle.className = 'resize-handle resize-left';
                 leftHandle.onmousedown = (e) => startResize(e, ev, 'left', dayIndex);
+                leftHandle.ontouchstart = (e) => startResizeTouch(e, ev, 'left', dayIndex);
                 
                 const rightHandle = document.createElement('div');
                 rightHandle.className = 'resize-handle resize-right';
                 rightHandle.onmousedown = (e) => startResize(e, ev, 'right', dayIndex);
+                rightHandle.ontouchstart = (e) => startResizeTouch(e, ev, 'right', dayIndex);
 
                 block.appendChild(leftHandle);
                 block.appendChild(rightHandle);
@@ -531,9 +545,78 @@
             }
         }
 
-        // ==========================================
-        //         5. INTERACTION (DRAW & RESIZE)
-        // ==========================================
+        function startDrawTouch(e, dayIndex) {
+            e.preventDefault();
+            if (e.target.closest('.temp-bar')) return;
+            isDrawing = true; activeDayIndex = dayIndex; drawStartX = e.touches[0].clientX;
+            const startMin = getTimelineMinutes(e.touches[0].clientX, dayIndex);
+            const indicator = document.getElementById(`draw-indicator-${dayIndex}`);
+            indicator.style.display = 'block';
+            indicator.style.left = `${(startMin / 1440) * 100}%`;
+            indicator.style.width = '0%';
+            indicator.dataset.startMin = startMin;
+        }
+
+        function startResizeTouch(e, blockObj, edge, dayIndex) {
+            e.preventDefault(); e.stopPropagation(); isResizing = true; resizeBlock = blockObj; resizeEdge = edge; activeDayIndex = dayIndex;
+        }
+
+        function handleInteractionTouch(e) {
+            e.preventDefault();
+            const clientX = e.touches[0].clientX;
+            if (isDrawing && activeDayIndex !== null) {
+                const indicator = document.getElementById(`draw-indicator-${activeDayIndex}`);
+                const startMin = parseInt(indicator.dataset.startMin);
+                let currentMin = getTimelineMinutes(clientX, activeDayIndex);
+                let min = Math.min(startMin, currentMin);
+                let max = Math.max(startMin, currentMin);
+                indicator.style.left = `${(min / 1440) * 100}%`;
+                indicator.style.width = `${((max - min) / 1440) * 100}%`;
+            }
+            
+            if (isResizing && resizeBlock && activeDayIndex !== null) {
+                let currentMin = getTimelineMinutes(clientX, activeDayIndex);
+                if (resizeEdge === 'left') {
+                    if (currentMin >= resizeBlock.end - 15) currentMin = resizeBlock.end - 15;
+                    resizeBlock.start = currentMin;
+                } else {
+                    if (currentMin <= resizeBlock.start + 15) currentMin = resizeBlock.start + 15;
+                    resizeBlock.end = currentMin;
+                }
+                
+                const otherBlocks = appState.events[appState.selectedRoom][activeDayIndex].filter(b => b.id !== resizeBlock.id);
+                for (let b of otherBlocks) {
+                    if (resizeBlock.start < b.end && resizeBlock.end > b.start) {
+                        if (resizeEdge === 'left') resizeBlock.start = b.end;
+                        if (resizeEdge === 'right') resizeBlock.end = b.start;
+                    }
+                }
+                renderTimelineForDay(activeDayIndex);
+            }
+        }
+
+        function endInteractionTouch(e) {
+            e.preventDefault();
+            if (isDrawing && activeDayIndex !== null) {
+                const indicator = document.getElementById(`draw-indicator-${activeDayIndex}`);
+                indicator.style.display = 'none';
+                const startMin = parseInt(indicator.dataset.startMin);
+                let currentMin = getTimelineMinutes(e.changedTouches[0].clientX, activeDayIndex);
+                let min = Math.min(startMin, currentMin); let max = Math.max(startMin, currentMin);
+                if (max - min >= 15) {
+                    const newEvent = { id: 'evt_' + Date.now(), start: min, end: max, temp: 20 };
+                    appState.events[appState.selectedRoom][activeDayIndex].push(newEvent);
+                    openEditModal(newEvent.id, activeDayIndex);
+                }
+                isDrawing = false;
+            }
+            
+            if (isResizing) {
+                isResizing = false; resizeBlock = null; resizeEdge = null; activeDayIndex = null;
+                saveConfigToServer();
+                queueGoogleSync();
+            }
+        }
 
         function getTimelineMinutes(clientX, dayIndex) {
             const rect = document.getElementById(`timeline-${dayIndex}`).getBoundingClientRect();

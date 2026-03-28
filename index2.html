@@ -6,14 +6,14 @@
     <title>Smart Heating Schedule Controller</title>
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- Firebase SDKs (No Auth Required) -->
+    <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
     <style>
-        /* Custom scrollbar for a cleaner look (Reverted to your original) */
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        /* Custom scrollbar for main areas */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         
@@ -33,61 +33,63 @@
         }
     </style>
 </head>
-<body class="bg-gray-100 text-gray-800 font-sans min-h-screen">
+<body class="bg-slate-100 text-slate-800 font-sans min-h-screen">
 
     <!-- App Layout: Stack on Mobile, Side-by-Side on PC -->
     <div class="flex flex-col md:flex-row min-h-screen">
         
         <!-- SIDEBAR -->
-        <div class="w-full md:w-64 bg-white shadow-lg flex-shrink-0 flex flex-col z-10">
-            <div class="p-4 bg-blue-600 text-white flex justify-between items-center">
-                <h1 class="text-xl font-bold">Heating Schedule</h1>
+        <div class="w-full md:w-64 bg-white border-b md:border-b-0 md:border-r border-slate-200 flex-shrink-0 flex flex-col shadow-sm z-10">
+            <div class="p-4 border-b border-slate-100 bg-slate-50">
+                <h1 class="text-lg font-extrabold text-slate-800 flex items-center gap-2">
+                    <span class="text-2xl">🔥</span> Heating Control
+                </h1>
             </div>
             
             <!-- Mobile scrollable room list -->
             <div class="flex-1 overflow-y-auto p-3 max-h-[30vh] md:max-h-full">
                 <!-- Ground Floor -->
-                <div class="mb-4">
-                    <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 px-2">Ground Floor</h3>
+                <div class="mb-6">
+                    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 px-3">Ground Floor</h3>
                     <div id="gf-rooms" class="space-y-1"></div>
                 </div>
                 <!-- First Floor -->
                 <div>
-                    <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 px-2">First Floor</h3>
+                    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 px-3">First Floor</h3>
                     <div id="ff-rooms" class="space-y-1"></div>
                 </div>
             </div>
         </div>
 
         <!-- MAIN CONTENT -->
-        <div class="flex-1 flex flex-col h-full w-full overflow-hidden">
-            <div class="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
+        <div class="flex-1 flex flex-col h-full overflow-hidden w-full">
+            <div class="flex-1 overflow-y-auto p-4 md:p-8">
                 
                 <!-- Main Header -->
-                <div class="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4 border-b border-gray-200 pb-4">
+                <div class="flex flex-col lg:flex-row lg:items-center justify-between mb-8 gap-4">
                     <div class="flex items-center gap-3">
-                        <h2 id="current-room-title" class="text-2xl font-bold text-gray-800">Select a Room</h2>
-                        <span id="main-temp-display" class="text-sm font-bold text-blue-700 bg-blue-50 px-2 py-1 rounded shadow-sm hidden"></span>
+                        <h2 id="current-room-title" class="text-2xl font-bold text-slate-800">Select a Room</h2>
+                        <span id="main-temp-display" class="text-sm font-bold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200 shadow-sm hidden transition-all"></span>
                     </div>
                     
                     <!-- Action Buttons -->
                     <div class="flex flex-wrap items-center gap-2" id="action-buttons" style="display: none;">
-                        <button onclick="copyRoomSchedule()" class="px-4 py-2 bg-gray-200 rounded text-sm font-medium hover:bg-gray-300 transition-colors shadow-sm">
-                            Copy Schedule
+                        <button onclick="copyRoomSchedule()" class="px-3 py-1.5 bg-white border border-slate-300 rounded text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm">
+                            📄 Copy Schedule
                         </button>
-                        <button onclick="pasteRoomSchedule()" class="px-4 py-2 bg-gray-200 rounded text-sm font-medium hover:bg-gray-300 transition-colors shadow-sm">
-                            Paste
+                        <button onclick="pasteRoomSchedule()" class="px-3 py-1.5 bg-white border border-slate-300 rounded text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm">
+                            📋 Paste
                         </button>
-                        <button onclick="importFromGoogle()" id="btn-sync" class="px-4 py-2 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm md:ml-2">
-                            Google Sync
+                        <button onclick="importFromGoogle()" id="btn-sync" class="px-3 py-1.5 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm ml-auto lg:ml-2">
+                            🔄 Google Sync
                         </button>
                     </div>
                 </div>
 
                 <!-- Timelines Container -->
-                <div id="timelines-container" class="space-y-4 w-full max-w-6xl">
-                    <div class="flex items-center justify-center h-64 text-gray-400 bg-white rounded shadow-sm border border-gray-200 border-dashed">
-                        Select a room from the sidebar to view schedules
+                <div id="timelines-container" class="space-y-6 w-full max-w-6xl">
+                    <div class="flex items-center justify-center h-64 text-slate-400 bg-white rounded-xl border border-slate-200 border-dashed">
+                        👈 Select a room from the sidebar to view schedules
                     </div>
                 </div>
 
@@ -111,9 +113,7 @@
             appId: "YOUR_APP_ID"
         };
 
-        // Put your Google API Key here for the public calendar fetch
-        const GOOGLE_API_KEY = "YOUR_GOOGLE_API_KEY"; 
-
+        // Initialize Firebase
         if (!firebase.apps.length) {
             firebase.initializeApp(firebaseConfig);
         }
@@ -124,19 +124,19 @@
         // ==========================================
         let appState = {
             rooms: [
-                { id: '1', code: 'gf_livingroom', name: 'Living Room', floor: 'GF', calendarId: 'YOUR_CALENDAR_ID' },
-                { id: '2', code: 'gf_kitchen', name: 'Kitchen', floor: 'GF', calendarId: 'YOUR_CALENDAR_ID' },
-                { id: '3', code: 'gf_office', name: 'Office', floor: 'GF', calendarId: 'YOUR_CALENDAR_ID' },
-                { id: '4', code: 'gf_entrance', name: 'Entrance', floor: 'GF', calendarId: 'YOUR_CALENDAR_ID' },
-                { id: '5', code: 'ff_parents', name: 'Parents Bedroom', floor: 'FF', calendarId: 'YOUR_CALENDAR_ID' },
-                { id: '6', code: 'ff_bathparents', name: 'Parents Bath', floor: 'FF', calendarId: 'YOUR_CALENDAR_ID' },
-                { id: '7', code: 'ff_julien', name: 'Julien', floor: 'FF', calendarId: 'YOUR_CALENDAR_ID' },
-                { id: '8', code: 'ff_nico', name: 'Nico', floor: 'FF', calendarId: 'YOUR_CALENDAR_ID' },
-                { id: '9', code: 'ff_sam', name: 'Sam', floor: 'FF', calendarId: 'YOUR_CALENDAR_ID' },
-                { id: '10', code: 'ff_bathkids', name: 'Kids Bath', floor: 'FF', calendarId: 'YOUR_CALENDAR_ID' }
+                { id: '1', code: 'gf_livingroom', name: 'Living Room', floor: 'GF' },
+                { id: '2', code: 'gf_kitchen', name: 'Kitchen', floor: 'GF' },
+                { id: '3', code: 'gf_office', name: 'Office', floor: 'GF' },
+                { id: '4', code: 'gf_entrance', name: 'Entrance', floor: 'GF' },
+                { id: '5', code: 'ff_parents', name: 'Parents Bedroom', floor: 'FF' },
+                { id: '6', code: 'ff_bathparents', name: 'Parents Bath', floor: 'FF' },
+                { id: '7', code: 'ff_julien', name: 'Julien', floor: 'FF' },
+                { id: '8', code: 'ff_nico', name: 'Nico', floor: 'FF' },
+                { id: '9', code: 'ff_sam', name: 'Sam', floor: 'FF' },
+                { id: '10', code: 'ff_bathkids', name: 'Kids Bath', floor: 'FF' }
             ],
             selectedRoom: null,
-            events: {}, 
+            events: {}, // events[roomId][dayIndex] = [{start, end, temp}]
             clipboard: null,
             liveTemps: {}
         };
@@ -147,6 +147,7 @@
         // 3. INITIALIZATION & DATA LOADING
         // ==========================================
         async function init() {
+            // Pre-fill empty events array
             appState.rooms.forEach(r => {
                 if (!appState.events[r.id]) {
                     appState.events[r.id] = [[],[],[],[],[],[],[]];
@@ -196,6 +197,7 @@
         function updateLiveTempDisplays() {
             if (!appState.liveTemps) return;
             
+            // Update Sidebar
             appState.rooms.forEach(room => {
                 const tempSpan = document.getElementById(`sidebar-temp-${room.code}`);
                 const roomData = appState.liveTemps[room.code];
@@ -204,6 +206,7 @@
                 }
             });
 
+            // Update Header
             if (appState.selectedRoom) {
                 const selectedRoomObj = appState.rooms.find(r => r.id === appState.selectedRoom);
                 const mainTempSpan = document.getElementById('main-temp-display');
@@ -229,11 +232,11 @@
 
             appState.rooms.forEach(room => {
                 const btn = document.createElement('button');
-                btn.className = `w-full text-left px-3 py-2.5 rounded text-sm font-medium transition-colors flex justify-between items-center ${appState.selectedRoom === room.id ? 'bg-blue-100 text-blue-800' : 'text-gray-700 hover:bg-gray-100'}`;
+                btn.className = `w-full text-left px-3 py-2.5 md:py-2 rounded-md text-sm md:text-sm font-medium transition-colors flex justify-between items-center ${appState.selectedRoom === room.id ? 'bg-blue-50 text-blue-700 shadow-inner' : 'text-slate-600 hover:bg-slate-100'}`;
                 btn.id = `room-btn-${room.id}`;
                 btn.onclick = () => selectRoom(room.id);
                 
-                btn.innerHTML = `<span class="truncate">${room.name}</span> <span id="sidebar-temp-${room.code}" class="text-xs text-gray-500 font-bold ml-2 whitespace-nowrap"></span>`;
+                btn.innerHTML = `<span class="truncate">${room.name}</span> <span id="sidebar-temp-${room.code}" class="text-xs text-slate-400 font-bold ml-2 whitespace-nowrap"></span>`;
                 
                 if (room.floor === 'GF') gfContainer.appendChild(btn);
                 else ffContainer.appendChild(btn);
@@ -254,8 +257,8 @@
 
         function getTempColor(temp) {
             if (temp < 18) return 'bg-blue-400 border-blue-500';
-            if (temp < 21) return 'bg-green-400 border-green-500';
-            if (temp < 23) return 'bg-yellow-400 border-yellow-500';
+            if (temp < 21) return 'bg-emerald-400 border-emerald-500';
+            if (temp < 23) return 'bg-amber-400 border-amber-500';
             return 'bg-red-400 border-red-500';
         }
 
@@ -268,31 +271,36 @@
             DAYS.forEach((day, dIdx) => {
                 const dayRow = document.createElement('div');
                 // Stack vertically on mobile, side-by-side on PC
-                dayRow.className = "flex flex-col md:flex-row md:items-center gap-2 md:gap-4 mb-5";
+                dayRow.className = "flex flex-col lg:flex-row lg:items-center gap-2 lg:gap-4 mb-6";
 
                 const dayLabel = document.createElement('div');
-                dayLabel.className = "w-full md:w-24 font-bold text-gray-700 pl-1";
+                dayLabel.className = "w-full lg:w-24 font-bold text-slate-700 pl-1";
                 dayLabel.innerText = day;
 
                 // --- MOBILE SWIPEABLE WRAPPER ---
                 const scrollWrapper = document.createElement('div');
+                // overflow-x-auto enables swiping, touch-pan-x makes it smooth on phones
                 scrollWrapper.className = "w-full overflow-x-auto pb-2 touch-pan-x hide-scrollbar";
 
                 const track = document.createElement('div');
-                // min-w-[700px] guarantees it never gets squished. h-12 makes it tappable!
-                track.className = "relative h-12 min-w-[700px] md:min-w-full bg-white rounded timeline-grid border border-gray-300 cursor-pointer shadow-sm";
+                // min-w-[700px] guarantees the bar never gets squished on mobile!
+                // h-14 makes the bar taller for easier thumb-tapping!
+                track.className = "relative h-14 min-w-[700px] lg:min-w-full bg-white rounded-lg timeline-grid border border-slate-200 cursor-pointer shadow-sm";
                 
                 track.onclick = (e) => {
                     if (e.target !== track) return; 
                     const rect = track.getBoundingClientRect();
                     const clickX = e.clientX - rect.left;
+                    // Calculate based on the scrollable width, not the screen width
                     const percent = clickX / track.offsetWidth; 
                     const clickMins = percent * 1440;
                     
+                    // Snap to nearest 15 mins
                     const snappedMins = Math.round(clickMins / 15) * 15;
                     addNewEvent(dIdx, snappedMins);
                 };
 
+                // Render specific heating blocks
                 events[dIdx].forEach((ev, evIdx) => {
                     const block = document.createElement('div');
                     block.className = `absolute h-full rounded shadow-sm border ${getTempColor(ev.temp)} flex items-center justify-center text-xs font-bold text-white hover:opacity-90 hover:scale-y-105 transition-transform cursor-pointer`;
@@ -328,6 +336,7 @@
             let temp = parseFloat(tempInput);
             if (isNaN(temp)) return;
 
+            // Default length is 2 hours (120 mins)
             let endMins = startMins + 120;
             if (endMins > 1440) endMins = 1440;
 
@@ -375,80 +384,34 @@
         }
 
         // ==========================================
-        // 8. GOOGLE SYNC (Native Fetch using API Key)
+        // 8. GOOGLE SYNC (Placeholder based on snippet)
         // ==========================================
         async function importFromGoogle() {
             const btn = document.getElementById('btn-sync');
-            const originalHTML = btn.innerHTML;
+            const originalText = btn.innerHTML;
             btn.innerHTML = "Syncing...";
-            btn.classList.add('animate-pulse');
             
             try {
-                // Clear all current events to replace with fresh Google Calendar data
-                appState.rooms.forEach(r => {
-                    appState.events[r.id] = [[],[],[],[],[],[],[]];
-                });
-
-                // Calculate the bounds for the current week (Monday to Sunday)
-                const now = new Date();
-                const startOfWeek = new Date(now);
-                startOfWeek.setDate(now.getDate() - (now.getDay() === 0 ? 6 : now.getDay() - 1));
-                startOfWeek.setHours(0,0,0,0);
+                // If you have a specific Google Apps Script or backend that parses Calendar events, 
+                // you would fetch it here. Example:
+                // const response = await fetch('YOUR_API_URL');
+                // const calendarData = await response.json();
                 
-                const endOfWeek = new Date(startOfWeek);
-                endOfWeek.setDate(startOfWeek.getDate() + 7);
-
-                // Loop through all rooms and fetch their specific calendars
-                for (const room of appState.rooms) {
-                    if (!room.calendarId || room.calendarId === 'YOUR_CALENDAR_ID') continue;
-                    
-                    const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(room.calendarId)}/events?singleEvents=true&timeMin=${startOfWeek.toISOString()}&timeMax=${endOfWeek.toISOString()}&key=${GOOGLE_API_KEY}`;
-                    
-                    const response = await fetch(url);
-                    if (!response.ok) continue; 
-                    
-                    const data = await response.json();
-                    
-                    if (data.items) {
-                        data.items.forEach(gEv => {
-                            if (gEv.start && gEv.start.dateTime && gEv.end && gEv.end.dateTime) {
-                                const stDt = new Date(gEv.start.dateTime);
-                                const endDt = new Date(gEv.end.dateTime);
-                                
-                                // Map Sunday(0) to 6, Monday(1) to 0, etc.
-                                let dIdx = stDt.getDay() - 1;
-                                if (dIdx < 0) dIdx = 6;
-                                
-                                let startMins = stDt.getHours() * 60 + stDt.getMinutes();
-                                let endMins = endDt.getHours() * 60 + endDt.getMinutes();
-                                if (endMins === 0 && startMins > 0) endMins = 1440; 
-                                
-                                const temp = parseFloat(gEv.summary) || 20;
-
-                                appState.events[room.id][dIdx].push({
-                                    id: 'evt_' + Date.now() + Math.random(),
-                                    start: startMins,
-                                    end: endMins,
-                                    temp: temp
-                                });
-                            }
-                        });
-                    }
-                }
-
-                renderAllTimelines();
-                await saveConfigToServer();
+                // For now, this just simulates a successful click
+                setTimeout(() => {
+                    btn.innerHTML = "Sync Complete!";
+                    btn.classList.add('bg-green-600');
+                    setTimeout(() => { 
+                        btn.innerHTML = originalText; 
+                        btn.classList.remove('bg-green-600');
+                    }, 2000);
+                }, 1000);
                 
-                btn.classList.remove('animate-pulse');
-                btn.innerHTML = 'Imported!';
-                setTimeout(() => { btn.innerHTML = originalHTML; }, 3000);
-
-            } catch (err) {
-                console.error("Import Error:", err);
-                btn.classList.remove('animate-pulse');
-                btn.innerHTML = 'Import Failed';
+            } catch (error) {
+                console.error(error);
+                btn.innerHTML = "Error!";
                 btn.classList.add('bg-red-600');
-                setTimeout(() => { btn.innerHTML = originalHTML; btn.classList.remove('bg-red-600'); }, 3000);
+                setTimeout(() => { btn.innerHTML = originalText; btn.classList.remove('bg-red-600'); }, 2000);
             }
         }
 

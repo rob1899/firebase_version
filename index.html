@@ -512,7 +512,22 @@
                     const data = JSON.parse(e.target.result);
                     if (data.events) {
                         if (confirm("Are you sure you want to overwrite your ENTIRE Firebase schedule with this local config.json file?")) {
-                            appState.events = data.events;
+                            
+                            // --- LEGACY MIGRATION: Convert old numeric IDs to new Room Codes ---
+                            const oldToNewMap = {
+                                '1': 'gf_livingroom', '2': 'gf_kitchen', '3': 'gf_office', '4': 'gf_entrance',
+                                '5': 'ff_parents', '6': 'ff_bathparents', '7': 'ff_julien', '8': 'ff_nico',
+                                '9': 'ff_sam', '10': 'ff_bathkids'
+                            };
+                            
+                            let migratedEvents = {};
+                            for (let key in data.events) {
+                                // Translate the key if it's a number, otherwise keep it as-is
+                                let newKey = oldToNewMap[key] || key;
+                                migratedEvents[newKey] = data.events[key];
+                            }
+                            
+                            appState.events = migratedEvents;
                             
                             // Re-apply array safety checks
                             appState.rooms.forEach(r => {

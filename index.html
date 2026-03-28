@@ -188,6 +188,7 @@
             selectedRoom: null,
             events: {}, 
             clipboard: null,
+            dayClipboard: null,
             liveTemps: {}
         };
 
@@ -336,9 +337,34 @@
                 const dayRow = document.createElement('div');
                 dayRow.className = "flex flex-col md:flex-row md:items-center gap-2 md:gap-4 mb-5";
 
+                // Container for the Day label AND the new Copy/Paste buttons
+                const dayLabelContainer = document.createElement('div');
+                dayLabelContainer.className = "w-full md:w-32 flex justify-between items-center pr-2 shrink-0";
+
                 const dayLabel = document.createElement('div');
-                dayLabel.className = "w-full md:w-24 font-bold text-gray-700 pl-1";
+                dayLabel.className = "font-bold text-gray-700 pl-1";
                 dayLabel.innerText = day;
+
+                const dayBtnGroup = document.createElement('div');
+                dayBtnGroup.className = "flex gap-1";
+
+                const copyDayBtn = document.createElement('button');
+                copyDayBtn.innerHTML = '📄';
+                copyDayBtn.title = "Copy " + day + " Schedule";
+                copyDayBtn.className = "text-xs p-1 text-gray-500 hover:text-blue-600 transition-colors bg-white rounded border border-gray-200 shadow-sm";
+                copyDayBtn.onclick = () => copyDaySchedule(dIdx);
+
+                const pasteDayBtn = document.createElement('button');
+                pasteDayBtn.innerHTML = '📋';
+                pasteDayBtn.title = "Paste to " + day;
+                pasteDayBtn.className = "text-xs p-1 text-gray-500 hover:text-blue-600 transition-colors bg-white rounded border border-gray-200 shadow-sm";
+                pasteDayBtn.onclick = () => pasteDaySchedule(dIdx);
+
+                dayBtnGroup.appendChild(copyDayBtn);
+                dayBtnGroup.appendChild(pasteDayBtn);
+                
+                dayLabelContainer.appendChild(dayLabel);
+                dayLabelContainer.appendChild(dayBtnGroup);
 
                 const scrollWrapper = document.createElement('div');
                 scrollWrapper.className = "w-full overflow-x-auto pb-2 touch-pan-x hide-scrollbar";
@@ -377,7 +403,7 @@
                 });
 
                 scrollWrapper.appendChild(track);
-                dayRow.appendChild(dayLabel);
+                dayRow.appendChild(dayLabelContainer);
                 dayRow.appendChild(scrollWrapper);
                 container.appendChild(dayRow);
             });
@@ -497,6 +523,22 @@
                 renderAllTimelines();
                 await saveConfigToServer();
             }
+        }
+
+        function copyDaySchedule(dayIdx) {
+            if (!appState.selectedRoom) return;
+            appState.dayClipboard = JSON.parse(JSON.stringify(appState.events[appState.selectedRoom][dayIdx]));
+            alert(DAYS[dayIdx] + " schedule copied! You can now paste it to another day.");
+        }
+
+        async function pasteDaySchedule(dayIdx) {
+            if (!appState.selectedRoom || !appState.dayClipboard) {
+                alert("Nothing copied to day clipboard! Copy a day first.");
+                return;
+            }
+            appState.events[appState.selectedRoom][dayIdx] = JSON.parse(JSON.stringify(appState.dayClipboard));
+            renderAllTimelines();
+            await saveConfigToServer();
         }
 
         // ==========================================

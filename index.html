@@ -11,7 +11,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
     <style>
-        /* Custom scrollbar for a cleaner look (Reverted to your original) */
+        /* Custom scrollbar for a cleaner look */
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
@@ -95,6 +95,42 @@
         </div>
     </div>
 
+    <!-- EVENT EDITOR MODAL -->
+    <div id="event-modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 hidden flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                <h3 id="modal-title" class="text-lg font-bold text-gray-800">Edit Heating Block</h3>
+                <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+            </div>
+            
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-sm font-bold text-gray-700 mb-1">Target Temperature (°C)</label>
+                    <input type="number" id="modal-temp" step="0.5" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                
+                <div class="flex gap-4">
+                    <div class="flex-1">
+                        <label class="block text-sm font-bold text-gray-700 mb-1">Start Time</label>
+                        <input type="time" id="modal-start" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div class="flex-1">
+                        <label class="block text-sm font-bold text-gray-700 mb-1">End Time</label>
+                        <input type="time" id="modal-end" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                </div>
+            </div>
+
+            <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-between items-center">
+                <button id="modal-delete-btn" onclick="deleteEvent()" class="text-red-600 hover:text-red-800 font-bold text-sm">Delete Block</button>
+                <div class="flex gap-2">
+                    <button onclick="closeModal()" class="px-4 py-2 text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 rounded-md font-medium transition-colors shadow-sm">Cancel</button>
+                    <button onclick="saveEvent()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium transition-colors shadow-sm">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- MAIN SCRIPT -->
     <script>
         // ==========================================
@@ -140,6 +176,8 @@
             clipboard: null,
             liveTemps: {}
         };
+
+        let currentEdit = { dayIdx: null, eventIdx: null }; // Tracks which event is open in the modal
 
         const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -279,7 +317,7 @@
                 scrollWrapper.className = "w-full overflow-x-auto pb-2 touch-pan-x hide-scrollbar";
 
                 const track = document.createElement('div');
-                // min-w-[700px] guarantees it never gets squished. h-12 makes it tappable!
+                // min-w-[700px] guarantees it never gets squished. md:min-w-full makes it stretch on PC.
                 track.className = "relative h-12 min-w-[700px] md:min-w-full bg-white rounded timeline-grid border border-gray-300 cursor-pointer shadow-sm";
                 
                 track.onclick = (e) => {
@@ -290,7 +328,7 @@
                     const clickMins = percent * 1440;
                     
                     const snappedMins = Math.round(clickMins / 15) * 15;
-                    addNewEvent(dIdx, snappedMins);
+                    openNewEventModal(dIdx, snappedMins);
                 };
 
                 events[dIdx].forEach((ev, evIdx) => {
@@ -306,7 +344,7 @@
                     
                     block.onclick = (e) => {
                         e.stopPropagation();
-                        editOrDeleteEvent(dIdx, evIdx);
+                        openEditModal(dIdx, evIdx);
                     };
                     
                     track.appendChild(block);
@@ -320,36 +358,90 @@
         }
 
         // ==========================================
-        // 6. EDITING SCHEDULES
+        // 6. EDITING SCHEDULES (THE MODAL)
         // ==========================================
-        function addNewEvent(dayIdx, startMins) {
-            let tempInput = prompt("Enter Target Temperature (°C):", "21");
-            if (tempInput === null) return;
-            let temp = parseFloat(tempInput);
-            if (isNaN(temp)) return;
-
-            let endMins = startMins + 120;
-            if (endMins > 1440) endMins = 1440;
-
-            appState.events[appState.selectedRoom][dayIdx].push({ start: startMins, end: endMins, temp: temp });
-            saveConfigToServer();
-            renderAllTimelines();
+        
+        // Helper: Convert minutes (e.g. 90) to time string (e.g. "01:30")
+        function minsToTime(mins) {
+            const h = Math.floor(mins / 60).toString().padStart(2, '0');
+            const m = (mins % 60).toString().padStart(2, '0');
+            return `${h}:${m}`;
         }
 
-        function editOrDeleteEvent(dayIdx, eventIdx) {
-            const action = prompt("Type 'e' to edit temperature, or 'd' to delete this block:", "e");
-            if (action === 'd') {
-                appState.events[appState.selectedRoom][dayIdx].splice(eventIdx, 1);
+        // Helper: Convert time string (e.g. "01:30") to minutes (e.g. 90)
+        function timeToMins(timeStr) {
+            if (!timeStr) return 0;
+            const [h, m] = timeStr.split(':');
+            return parseInt(h) * 60 + parseInt(m);
+        }
+
+        function openNewEventModal(dayIdx, startMins) {
+            currentEdit = { dayIdx: dayIdx, eventIdx: null }; // null means we are creating a new block
+            
+            document.getElementById('modal-title').innerText = "Add New Heating Block";
+            document.getElementById('modal-delete-btn').style.display = 'none'; // Hide delete button for new events
+            
+            let endMins = startMins + 120; // Default 2 hour duration
+            if (endMins > 1440) endMins = 1440;
+            
+            document.getElementById('modal-temp').value = 21;
+            document.getElementById('modal-start').value = minsToTime(startMins);
+            document.getElementById('modal-end').value = minsToTime(endMins);
+            
+            document.getElementById('event-modal').classList.remove('hidden');
+        }
+
+        function openEditModal(dayIdx, eventIdx) {
+            currentEdit = { dayIdx: dayIdx, eventIdx: eventIdx };
+            const ev = appState.events[appState.selectedRoom][dayIdx][eventIdx];
+            
+            document.getElementById('modal-title').innerText = "Edit Heating Block";
+            document.getElementById('modal-delete-btn').style.display = 'block'; // Show delete button
+            
+            document.getElementById('modal-temp').value = ev.temp;
+            document.getElementById('modal-start').value = minsToTime(ev.start);
+            document.getElementById('modal-end').value = minsToTime(ev.end);
+            
+            document.getElementById('event-modal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('event-modal').classList.add('hidden');
+        }
+
+        function saveEvent() {
+            const temp = parseFloat(document.getElementById('modal-temp').value);
+            const startMins = timeToMins(document.getElementById('modal-start').value);
+            const endMins = timeToMins(document.getElementById('modal-end').value);
+            
+            if (isNaN(temp) || isNaN(startMins) || isNaN(endMins) || startMins >= endMins) {
+                alert("Please enter valid times and temperatures.");
+                return;
+            }
+
+            const roomEvents = appState.events[appState.selectedRoom][currentEdit.dayIdx];
+
+            if (currentEdit.eventIdx === null) {
+                // We are saving a brand new block
+                roomEvents.push({ start: startMins, end: endMins, temp: temp });
+            } else {
+                // We are editing an existing block
+                roomEvents[currentEdit.eventIdx].temp = temp;
+                roomEvents[currentEdit.eventIdx].start = startMins;
+                roomEvents[currentEdit.eventIdx].end = endMins;
+            }
+            
+            saveConfigToServer();
+            renderAllTimelines();
+            closeModal();
+        }
+
+        function deleteEvent() {
+            if (currentEdit.eventIdx !== null && confirm("Are you sure you want to delete this block?")) {
+                appState.events[appState.selectedRoom][currentEdit.dayIdx].splice(currentEdit.eventIdx, 1);
                 saveConfigToServer();
                 renderAllTimelines();
-            } else if (action === 'e') {
-                let currentTemp = appState.events[appState.selectedRoom][dayIdx][eventIdx].temp;
-                let newTemp = prompt("New Temperature:", currentTemp);
-                if (newTemp !== null && !isNaN(parseFloat(newTemp))) {
-                    appState.events[appState.selectedRoom][dayIdx][eventIdx].temp = parseFloat(newTemp);
-                    saveConfigToServer();
-                    renderAllTimelines();
-                }
+                closeModal();
             }
         }
 

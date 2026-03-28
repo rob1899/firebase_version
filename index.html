@@ -207,10 +207,18 @@
                     }
                 }
 
-                // Ensure all rooms have empty array structure if db is new/empty
+                // FIX: Firebase deletes completely empty arrays. 
+                // We MUST ensure every single room has exactly 7 arrays for the 7 days, 
+                // otherwise the renderer will crash when it tries to loop over a missing day.
                 appState.rooms.forEach(r => {
                     if (!appState.events[r.id]) {
                         appState.events[r.id] = [[],[],[],[],[],[],[]];
+                    } else {
+                        for (let i = 0; i < 7; i++) {
+                            if (!appState.events[r.id][i]) {
+                                appState.events[r.id][i] = [];
+                            }
+                        }
                     }
                 });
 
@@ -229,6 +237,8 @@
                 });
             } catch (error) {
                 console.error('Error saving config to Firebase:', error);
+                // NEW: Warn you if Firebase rejected the save!
+                alert("Failed to save to Firebase! Please check your Firebase Security Rules.");
             }
         }
 

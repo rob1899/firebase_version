@@ -88,6 +88,12 @@
                         <button onclick="pasteRoomSchedule()" class="px-4 py-2 bg-blue-100 text-blue-800 rounded text-sm font-medium hover:bg-blue-200 transition-colors shadow-sm">
                             Paste Schedule
                         </button>
+                        
+                        <!-- NEW: Import config.json -->
+                        <input type="file" id="import-file" accept=".json" style="display: none;" onchange="importLocalConfig(event)">
+                        <button onclick="document.getElementById('import-file').click()" class="px-4 py-2 bg-purple-100 text-purple-800 rounded text-sm font-medium hover:bg-purple-200 transition-colors shadow-sm">
+                            Upload config.json
+                        </button>
                     </div>
                 </div>
 
@@ -491,6 +497,50 @@
                 renderAllTimelines();
                 await saveConfigToServer();
             }
+        }
+
+        // ==========================================
+        // 8. IMPORT LOCAL CONFIG.JSON
+        // ==========================================
+        function importLocalConfig(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if (data.events) {
+                        if (confirm("Are you sure you want to overwrite your ENTIRE Firebase schedule with this local config.json file?")) {
+                            appState.events = data.events;
+                            
+                            // Re-apply array safety checks
+                            appState.rooms.forEach(r => {
+                                if (!appState.events[r.id]) {
+                                    appState.events[r.id] = [[],[],[],[],[],[],[]];
+                                } else {
+                                    for (let i = 0; i < 7; i++) {
+                                        if (!appState.events[r.id][i]) {
+                                            appState.events[r.id][i] = [];
+                                        }
+                                    }
+                                }
+                            });
+
+                            renderAllTimelines();
+                            await saveConfigToServer();
+                            alert("Successfully imported and saved to Firebase! Your schedule is now live.");
+                        }
+                    } else {
+                        alert("Invalid config.json format. No 'events' object found.");
+                    }
+                } catch (err) {
+                    console.error("Parse error:", err);
+                    alert("Error reading the JSON file.");
+                }
+                event.target.value = ''; // Reset file input so you can select the same file again if needed
+            };
+            reader.readAsText(file);
         }
 
         // Boot the app

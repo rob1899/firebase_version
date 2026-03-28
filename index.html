@@ -6,7 +6,7 @@
     <title>Smart Heating Schedule Controller</title>
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- Firebase SDKs (No Auth Required) -->
+    <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
@@ -85,11 +85,8 @@
                         <button onclick="copyRoomSchedule()" class="px-4 py-2 bg-gray-200 rounded text-sm font-medium hover:bg-gray-300 transition-colors shadow-sm">
                             Copy Schedule
                         </button>
-                        <button onclick="pasteRoomSchedule()" class="px-4 py-2 bg-gray-200 rounded text-sm font-medium hover:bg-gray-300 transition-colors shadow-sm">
-                            Paste
-                        </button>
-                        <button onclick="importFromGoogle()" id="btn-sync" class="px-4 py-2 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm md:ml-2">
-                            Google Sync
+                        <button onclick="pasteRoomSchedule()" class="px-4 py-2 bg-blue-100 text-blue-800 rounded text-sm font-medium hover:bg-blue-200 transition-colors shadow-sm">
+                            Paste Schedule
                         </button>
                     </div>
                 </div>
@@ -161,29 +158,26 @@
             appId: "YOUR_APP_ID"
         };
 
-        // Put your Google API Key here for the public calendar fetch
-        const GOOGLE_API_KEY = "YOUR_GOOGLE_API_KEY"; 
-
         if (!firebase.apps.length) {
             firebase.initializeApp(firebaseConfig);
         }
         const db = firebase.database();
 
         // ==========================================
-        // 2. APP STATE
+        // 2. APP STATE (Optimized Room IDs for HA)
         // ==========================================
         let appState = {
             rooms: [
-                { id: '1', code: 'gf_livingroom', name: 'Living Room', floor: 'GF', calendarId: 'YOUR_CALENDAR_ID' },
-                { id: '2', code: 'gf_kitchen', name: 'Kitchen', floor: 'GF', calendarId: 'YOUR_CALENDAR_ID' },
-                { id: '3', code: 'gf_office', name: 'Office', floor: 'GF', calendarId: 'YOUR_CALENDAR_ID' },
-                { id: '4', code: 'gf_entrance', name: 'Entrance', floor: 'GF', calendarId: 'YOUR_CALENDAR_ID' },
-                { id: '5', code: 'ff_parents', name: 'Parents Bedroom', floor: 'FF', calendarId: 'YOUR_CALENDAR_ID' },
-                { id: '6', code: 'ff_bathparents', name: 'Parents Bath', floor: 'FF', calendarId: 'YOUR_CALENDAR_ID' },
-                { id: '7', code: 'ff_julien', name: 'Julien', floor: 'FF', calendarId: 'YOUR_CALENDAR_ID' },
-                { id: '8', code: 'ff_nico', name: 'Nico', floor: 'FF', calendarId: 'YOUR_CALENDAR_ID' },
-                { id: '9', code: 'ff_sam', name: 'Sam', floor: 'FF', calendarId: 'YOUR_CALENDAR_ID' },
-                { id: '10', code: 'ff_bathkids', name: 'Kids Bath', floor: 'FF', calendarId: 'YOUR_CALENDAR_ID' }
+                { id: 'gf_livingroom', code: 'gf_livingroom', name: 'Living Room', floor: 'GF' },
+                { id: 'gf_kitchen', code: 'gf_kitchen', name: 'Kitchen', floor: 'GF' },
+                { id: 'gf_office', code: 'gf_office', name: 'Office', floor: 'GF' },
+                { id: 'gf_entrance', code: 'gf_entrance', name: 'Entrance', floor: 'GF' },
+                { id: 'ff_parents', code: 'ff_parents', name: 'Parents Bedroom', floor: 'FF' },
+                { id: 'ff_bathparents', code: 'ff_bathparents', name: 'Parents Bath', floor: 'FF' },
+                { id: 'ff_julien', code: 'ff_julien', name: 'Julien', floor: 'FF' },
+                { id: 'ff_nico', code: 'ff_nico', name: 'Nico', floor: 'FF' },
+                { id: 'ff_sam', code: 'ff_sam', name: 'Sam', floor: 'FF' },
+                { id: 'ff_bathkids', code: 'ff_bathkids', name: 'Kids Bath', floor: 'FF' }
             ],
             selectedRoom: null,
             events: {}, 
@@ -191,23 +185,17 @@
             liveTemps: {}
         };
 
-        let currentEdit = { dayIdx: null, eventIdx: null }; // Tracks which event is open in the modal
+        let currentEdit = { dayIdx: null, eventIdx: null }; 
 
         const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
         // ==========================================
-        // 3. INITIALIZATION & DATA LOADING
+        // 3. INITIALIZATION & FIREBASE SAVING
         // ==========================================
         async function init() {
-            appState.rooms.forEach(r => {
-                if (!appState.events[r.id]) {
-                    appState.events[r.id] = [[],[],[],[],[],[],[]];
-                }
-            });
-
+            listenForSchedules(); // Load config from Firebase
+            listenForLiveTemperatures(); // Start HA real-time listener
             renderSidebar();
-            listenForSchedules();
-            listenForLiveTemperatures();
         }
 
         function listenForSchedules() {
@@ -216,20 +204,31 @@
                     const data = snapshot.val();
                     if (data.events) {
                         appState.events = data.events;
-                        if (appState.selectedRoom) renderAllTimelines();
                     }
+                }
+
+                // Ensure all rooms have empty array structure if db is new/empty
+                appState.rooms.forEach(r => {
+                    if (!appState.events[r.id]) {
+                        appState.events[r.id] = [[],[],[],[],[],[],[]];
+                    }
+                });
+
+                if (appState.selectedRoom) {
+                    renderAllTimelines();
                 }
             });
         }
 
         async function saveConfigToServer() {
             try {
+                // Save data directly to Firebase Database as the ultimate truth
                 await db.ref('heatingConfig').set({
                     events: appState.events,
                     lastUpdated: new Date().toISOString()
                 });
-            } catch (err) {
-                console.error("Failed to save to Firebase:", err);
+            } catch (error) {
+                console.error('Error saving config to Firebase:', error);
             }
         }
 
@@ -319,19 +318,16 @@
 
             DAYS.forEach((day, dIdx) => {
                 const dayRow = document.createElement('div');
-                // Stack vertically on mobile, side-by-side on PC
                 dayRow.className = "flex flex-col md:flex-row md:items-center gap-2 md:gap-4 mb-5";
 
                 const dayLabel = document.createElement('div');
                 dayLabel.className = "w-full md:w-24 font-bold text-gray-700 pl-1";
                 dayLabel.innerText = day;
 
-                // --- MOBILE SWIPEABLE WRAPPER ---
                 const scrollWrapper = document.createElement('div');
                 scrollWrapper.className = "w-full overflow-x-auto pb-2 touch-pan-x hide-scrollbar";
 
                 const track = document.createElement('div');
-                // min-w-[700px] guarantees it never gets squished. md:min-w-full makes it stretch on PC.
                 track.className = "relative h-12 min-w-[700px] md:min-w-full bg-white rounded timeline-grid border border-gray-300 cursor-pointer shadow-sm";
                 
                 track.onclick = (e) => {
@@ -375,14 +371,12 @@
         // 6. EDITING SCHEDULES (THE MODAL)
         // ==========================================
         
-        // Helper: Convert minutes (e.g. 90) to time string (e.g. "01:30")
         function minsToTime(mins) {
             const h = Math.floor(mins / 60).toString().padStart(2, '0');
             const m = (mins % 60).toString().padStart(2, '0');
             return `${h}:${m}`;
         }
 
-        // Helper: Convert time string (e.g. "01:30") to minutes (e.g. 90)
         function timeToMins(timeStr) {
             if (!timeStr) return 0;
             const [h, m] = timeStr.split(':');
@@ -394,7 +388,6 @@
             let currentVal = parseFloat(tempInput.value) || 21;
             let newVal = currentVal + amount;
             
-            // Prevent crazy temperatures
             if (newVal < 5) newVal = 5;
             if (newVal > 35) newVal = 35;
             
@@ -402,12 +395,12 @@
         }
 
         function openNewEventModal(dayIdx, startMins) {
-            currentEdit = { dayIdx: dayIdx, eventIdx: null }; // null means we are creating a new block
+            currentEdit = { dayIdx: dayIdx, eventIdx: null }; 
             
             document.getElementById('modal-title').innerText = "Add New Heating Block";
-            document.getElementById('modal-delete-btn').style.display = 'none'; // Hide delete button for new events
+            document.getElementById('modal-delete-btn').style.display = 'none'; 
             
-            let endMins = startMins + 120; // Default 2 hour duration
+            let endMins = startMins + 120; 
             if (endMins > 1440) endMins = 1440;
             
             document.getElementById('modal-temp').value = 21;
@@ -422,7 +415,7 @@
             const ev = appState.events[appState.selectedRoom][dayIdx][eventIdx];
             
             document.getElementById('modal-title').innerText = "Edit Heating Block";
-            document.getElementById('modal-delete-btn').style.display = 'block'; // Show delete button
+            document.getElementById('modal-delete-btn').style.display = 'block'; 
             
             document.getElementById('modal-temp').value = ev.temp;
             document.getElementById('modal-start').value = minsToTime(ev.start);
@@ -435,7 +428,7 @@
             document.getElementById('event-modal').classList.add('hidden');
         }
 
-        function saveEvent() {
+        async function saveEvent() {
             const temp = parseFloat(document.getElementById('modal-temp').value);
             const startMins = timeToMins(document.getElementById('modal-start').value);
             const endMins = timeToMins(document.getElementById('modal-end').value);
@@ -448,25 +441,23 @@
             const roomEvents = appState.events[appState.selectedRoom][currentEdit.dayIdx];
 
             if (currentEdit.eventIdx === null) {
-                // We are saving a brand new block
                 roomEvents.push({ start: startMins, end: endMins, temp: temp });
             } else {
-                // We are editing an existing block
                 roomEvents[currentEdit.eventIdx].temp = temp;
                 roomEvents[currentEdit.eventIdx].start = startMins;
                 roomEvents[currentEdit.eventIdx].end = endMins;
             }
             
-            saveConfigToServer();
             renderAllTimelines();
+            await saveConfigToServer(); 
             closeModal();
         }
 
-        function deleteEvent() {
+        async function deleteEvent() {
             if (currentEdit.eventIdx !== null && confirm("Are you sure you want to delete this block?")) {
                 appState.events[appState.selectedRoom][currentEdit.dayIdx].splice(currentEdit.eventIdx, 1);
-                saveConfigToServer();
                 renderAllTimelines();
+                await saveConfigToServer(); 
                 closeModal();
             }
         }
@@ -480,93 +471,15 @@
             alert("Schedule copied! Select another room and click Paste.");
         }
 
-        function pasteRoomSchedule() {
+        async function pasteRoomSchedule() {
             if (!appState.selectedRoom || !appState.clipboard) {
                 alert("Nothing copied to clipboard!");
                 return;
             }
             if(confirm("Overwrite this room's entire schedule with the copied schedule?")) {
                 appState.events[appState.selectedRoom] = JSON.parse(JSON.stringify(appState.clipboard));
-                saveConfigToServer();
-                renderAllTimelines();
-            }
-        }
-
-        // ==========================================
-        // 8. GOOGLE SYNC (Native Fetch using API Key)
-        // ==========================================
-        async function importFromGoogle() {
-            const btn = document.getElementById('btn-sync');
-            const originalHTML = btn.innerHTML;
-            btn.innerHTML = "Syncing...";
-            btn.classList.add('animate-pulse');
-            
-            try {
-                // Clear all current events to replace with fresh Google Calendar data
-                appState.rooms.forEach(r => {
-                    appState.events[r.id] = [[],[],[],[],[],[],[]];
-                });
-
-                // Calculate the bounds for the current week (Monday to Sunday)
-                const now = new Date();
-                const startOfWeek = new Date(now);
-                startOfWeek.setDate(now.getDate() - (now.getDay() === 0 ? 6 : now.getDay() - 1));
-                startOfWeek.setHours(0,0,0,0);
-                
-                const endOfWeek = new Date(startOfWeek);
-                endOfWeek.setDate(startOfWeek.getDate() + 7);
-
-                // Loop through all rooms and fetch their specific calendars
-                for (const room of appState.rooms) {
-                    if (!room.calendarId || room.calendarId === 'YOUR_CALENDAR_ID') continue;
-                    
-                    const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(room.calendarId)}/events?singleEvents=true&timeMin=${startOfWeek.toISOString()}&timeMax=${endOfWeek.toISOString()}&key=${GOOGLE_API_KEY}`;
-                    
-                    const response = await fetch(url);
-                    if (!response.ok) continue; 
-                    
-                    const data = await response.json();
-                    
-                    if (data.items) {
-                        data.items.forEach(gEv => {
-                            if (gEv.start && gEv.start.dateTime && gEv.end && gEv.end.dateTime) {
-                                const stDt = new Date(gEv.start.dateTime);
-                                const endDt = new Date(gEv.end.dateTime);
-                                
-                                // Map Sunday(0) to 6, Monday(1) to 0, etc.
-                                let dIdx = stDt.getDay() - 1;
-                                if (dIdx < 0) dIdx = 6;
-                                
-                                let startMins = stDt.getHours() * 60 + stDt.getMinutes();
-                                let endMins = endDt.getHours() * 60 + endDt.getMinutes();
-                                if (endMins === 0 && startMins > 0) endMins = 1440; 
-                                
-                                const temp = parseFloat(gEv.summary) || 20;
-
-                                appState.events[room.id][dIdx].push({
-                                    id: 'evt_' + Date.now() + Math.random(),
-                                    start: startMins,
-                                    end: endMins,
-                                    temp: temp
-                                });
-                            }
-                        });
-                    }
-                }
-
                 renderAllTimelines();
                 await saveConfigToServer();
-                
-                btn.classList.remove('animate-pulse');
-                btn.innerHTML = 'Imported!';
-                setTimeout(() => { btn.innerHTML = originalHTML; }, 3000);
-
-            } catch (err) {
-                console.error("Import Error:", err);
-                btn.classList.remove('animate-pulse');
-                btn.innerHTML = 'Import Failed';
-                btn.classList.add('bg-red-600');
-                setTimeout(() => { btn.innerHTML = originalHTML; btn.classList.remove('bg-red-600'); }, 3000);
             }
         }
 

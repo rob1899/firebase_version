@@ -82,25 +82,38 @@
                     
                     <!-- Action Buttons -->
                     <div class="flex flex-wrap items-center gap-2" id="action-buttons" style="display: none;">
-                        <button onclick="copyRoomSchedule()" class="px-4 py-2 bg-gray-200 rounded text-sm font-medium hover:bg-gray-300 transition-colors shadow-sm">
-                            Copy Schedule
+                        <button id="btn-copy-room" onclick="copyRoomSchedule()" class="px-4 py-2 bg-gray-200 rounded text-sm font-medium hover:bg-gray-300 transition-colors shadow-sm">
+                            Copy Weekly Schedule
                         </button>
-                        <button onclick="pasteRoomSchedule()" class="px-4 py-2 bg-blue-100 text-blue-800 rounded text-sm font-medium hover:bg-blue-200 transition-colors shadow-sm">
-                            Paste Schedule
+                        <button id="btn-paste-room" onclick="pasteRoomSchedule()" class="px-4 py-2 bg-blue-100 text-blue-800 rounded text-sm font-medium hover:bg-blue-200 transition-colors shadow-sm">
+                            Paste Weekly Schedule
                         </button>
                         
-                        <!-- NEW: Import config.json -->
-                        <input type="file" id="import-file" accept=".json" style="display: none;" onchange="importLocalConfig(event)">
-                        <button onclick="document.getElementById('import-file').click()" class="px-4 py-2 bg-purple-100 text-purple-800 rounded text-sm font-medium hover:bg-purple-200 transition-colors shadow-sm">
-                            Upload config.json
-                        </button>
+                        <!-- Settings 3-Dot Menu -->
+                        <div class="relative ml-2">
+                            <button id="menu-btn" onclick="toggleMenu(event)" class="p-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors shadow-sm focus:outline-none" title="Settings">
+                                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"></path></svg>
+                            </button>
+                            <div id="settings-menu" class="hidden absolute right-0 mt-2 w-56 bg-white rounded-md shadow-xl border border-gray-200 z-50 overflow-hidden">
+                                <!-- Hidden input for the actual file upload -->
+                                <input type="file" id="import-file" accept=".json" style="display: none;" onchange="importLocalConfig(event)">
+                                <button onclick="document.getElementById('import-file').click(); toggleMenu(event);" class="block w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-100 border-b border-gray-100 flex items-center gap-2">
+                                    <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                                    Upload config.json
+                                </button>
+                                <button onclick="exportConfigToJSON(); toggleMenu(event);" class="block w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2">
+                                    <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                    Backup config.json
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
                 <!-- Timelines Container -->
                 <div id="timelines-container" class="space-y-4 w-full max-w-6xl">
                     <div class="flex items-center justify-center h-64 text-gray-400 bg-white rounded shadow-sm border border-gray-200 border-dashed">
-                        Select a room from the sidebar to view schedules
+                        Loading schedules...
                     </div>
                 </div>
 
@@ -170,7 +183,7 @@
         const db = firebase.database();
 
         // ==========================================
-        // 2. APP STATE (Optimized Room IDs for HA)
+        // 2. APP STATE 
         // ==========================================
         let appState = {
             rooms: [
@@ -214,9 +227,7 @@
                     }
                 }
 
-                // FIX: Firebase deletes completely empty arrays. 
-                // We MUST ensure every single room has exactly 7 arrays for the 7 days, 
-                // otherwise the renderer will crash when it tries to loop over a missing day.
+                // FIX: Ensure all rooms have 7 arrays to prevent crashes on empty days
                 appState.rooms.forEach(r => {
                     if (!appState.events[r.id]) {
                         appState.events[r.id] = [[],[],[],[],[],[],[]];
@@ -229,7 +240,10 @@
                     }
                 });
 
-                if (appState.selectedRoom) {
+                // Default to Living Room on initial load if nothing is selected yet
+                if (!appState.selectedRoom) {
+                    selectRoom('gf_livingroom');
+                } else {
                     renderAllTimelines();
                 }
             });
@@ -237,14 +251,12 @@
 
         async function saveConfigToServer() {
             try {
-                // Save data directly to Firebase Database as the ultimate truth
                 await db.ref('heatingConfig').set({
                     events: appState.events,
                     lastUpdated: new Date().toISOString()
                 });
             } catch (error) {
                 console.error('Error saving config to Firebase:', error);
-                // NEW: Warn you if Firebase rejected the save!
                 alert("Failed to save to Firebase! Please check your Firebase Security Rules.");
             }
         }
@@ -290,6 +302,20 @@
         // ==========================================
         // 5. UI RENDERING
         // ==========================================
+        
+        // Hide settings menu when clicking outside
+        window.onclick = function(event) {
+            const menu = document.getElementById('settings-menu');
+            if (menu && !menu.classList.contains('hidden') && !event.target.closest('#menu-btn') && !event.target.closest('#settings-menu')) {
+                menu.classList.add('hidden');
+            }
+        }
+
+        function toggleMenu(event) {
+            event.stopPropagation();
+            document.getElementById('settings-menu').classList.toggle('hidden');
+        }
+
         function renderSidebar() {
             const gfContainer = document.getElementById('gf-rooms');
             const ffContainer = document.getElementById('ff-rooms');
@@ -337,37 +363,12 @@
                 const dayRow = document.createElement('div');
                 dayRow.className = "flex flex-col md:flex-row md:items-center gap-2 md:gap-4 mb-5";
 
-                // Container for the Day label AND the new Copy/Paste buttons
-                const dayLabelContainer = document.createElement('div');
-                dayLabelContainer.className = "w-full md:w-32 flex justify-between items-center pr-2 shrink-0";
-
                 const dayLabel = document.createElement('div');
-                dayLabel.className = "font-bold text-gray-700 pl-1";
+                dayLabel.className = "w-full md:w-24 font-bold text-gray-700 pl-1 shrink-0";
                 dayLabel.innerText = day;
 
-                const dayBtnGroup = document.createElement('div');
-                dayBtnGroup.className = "flex gap-1";
-
-                const copyDayBtn = document.createElement('button');
-                copyDayBtn.innerHTML = '📄';
-                copyDayBtn.title = "Copy " + day + " Schedule";
-                copyDayBtn.className = "text-xs p-1 text-gray-500 hover:text-blue-600 transition-colors bg-white rounded border border-gray-200 shadow-sm";
-                copyDayBtn.onclick = () => copyDaySchedule(dIdx);
-
-                const pasteDayBtn = document.createElement('button');
-                pasteDayBtn.innerHTML = '📋';
-                pasteDayBtn.title = "Paste to " + day;
-                pasteDayBtn.className = "text-xs p-1 text-gray-500 hover:text-blue-600 transition-colors bg-white rounded border border-gray-200 shadow-sm";
-                pasteDayBtn.onclick = () => pasteDaySchedule(dIdx);
-
-                dayBtnGroup.appendChild(copyDayBtn);
-                dayBtnGroup.appendChild(pasteDayBtn);
-                
-                dayLabelContainer.appendChild(dayLabel);
-                dayLabelContainer.appendChild(dayBtnGroup);
-
                 const scrollWrapper = document.createElement('div');
-                scrollWrapper.className = "w-full overflow-x-auto pb-2 touch-pan-x hide-scrollbar";
+                scrollWrapper.className = "flex-1 w-full overflow-x-auto pb-2 touch-pan-x hide-scrollbar";
 
                 const track = document.createElement('div');
                 track.className = "relative h-12 min-w-[700px] md:min-w-full bg-white rounded timeline-grid border border-gray-300 cursor-pointer shadow-sm";
@@ -403,8 +404,30 @@
                 });
 
                 scrollWrapper.appendChild(track);
-                dayRow.appendChild(dayLabelContainer);
+
+                // Copy/Paste buttons moved to the far right side
+                const dayBtnGroup = document.createElement('div');
+                dayBtnGroup.className = "flex gap-2 shrink-0 self-end md:self-auto mb-2 md:mb-0";
+
+                const copyDayBtn = document.createElement('button');
+                copyDayBtn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>';
+                copyDayBtn.title = "Copy " + day + " Schedule";
+                copyDayBtn.className = "p-2 text-gray-500 hover:text-blue-600 bg-white rounded border border-gray-200 shadow-sm transition-colors flex items-center justify-center";
+                copyDayBtn.onclick = (e) => copyDaySchedule(dIdx, e);
+
+                const pasteDayBtn = document.createElement('button');
+                pasteDayBtn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>';
+                pasteDayBtn.title = "Paste to " + day;
+                pasteDayBtn.className = "p-2 text-gray-500 hover:text-blue-600 bg-white rounded border border-gray-200 shadow-sm transition-colors flex items-center justify-center";
+                pasteDayBtn.onclick = () => pasteDaySchedule(dIdx);
+
+                dayBtnGroup.appendChild(copyDayBtn);
+                dayBtnGroup.appendChild(pasteDayBtn);
+
+                dayRow.appendChild(dayLabel);
                 dayRow.appendChild(scrollWrapper);
+                dayRow.appendChild(dayBtnGroup); // Placed at the end of the row
+                
                 container.appendChild(dayRow);
             });
         }
@@ -505,45 +528,74 @@
         }
 
         // ==========================================
-        // 7. COPY / PASTE
+        // 7. COPY / PASTE (No Dialogs)
         // ==========================================
         function copyRoomSchedule() {
             if (!appState.selectedRoom) return;
             appState.clipboard = JSON.parse(JSON.stringify(appState.events[appState.selectedRoom]));
-            alert("Schedule copied! Select another room and click Paste.");
+            
+            const btn = document.getElementById('btn-copy-room');
+            const orig = btn.innerHTML;
+            btn.innerHTML = "✓ Copied";
+            btn.classList.add('bg-green-100', 'text-green-800');
+            setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('bg-green-100', 'text-green-800'); }, 1500);
         }
 
         async function pasteRoomSchedule() {
-            if (!appState.selectedRoom || !appState.clipboard) {
-                alert("Nothing copied to clipboard!");
-                return;
-            }
-            if(confirm("Overwrite this room's entire schedule with the copied schedule?")) {
-                appState.events[appState.selectedRoom] = JSON.parse(JSON.stringify(appState.clipboard));
-                renderAllTimelines();
-                await saveConfigToServer();
-            }
+            if (!appState.selectedRoom || !appState.clipboard) return;
+            
+            appState.events[appState.selectedRoom] = JSON.parse(JSON.stringify(appState.clipboard));
+            renderAllTimelines();
+            await saveConfigToServer();
+
+            const btn = document.getElementById('btn-paste-room');
+            const orig = btn.innerHTML;
+            btn.innerHTML = "✓ Pasted";
+            btn.classList.add('bg-green-100', 'text-green-800');
+            setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('bg-green-100', 'text-green-800'); }, 1500);
         }
 
-        function copyDaySchedule(dayIdx) {
+        function copyDaySchedule(dayIdx, event) {
             if (!appState.selectedRoom) return;
             appState.dayClipboard = JSON.parse(JSON.stringify(appState.events[appState.selectedRoom][dayIdx]));
-            alert(DAYS[dayIdx] + " schedule copied! You can now paste it to another day.");
+            
+            const btn = event.currentTarget;
+            const orig = btn.innerHTML;
+            btn.innerHTML = '<svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>';
+            setTimeout(() => { if(document.body.contains(btn)) btn.innerHTML = orig; }, 1500);
         }
 
         async function pasteDaySchedule(dayIdx) {
-            if (!appState.selectedRoom || !appState.dayClipboard) {
-                alert("Nothing copied to day clipboard! Copy a day first.");
-                return;
-            }
+            if (!appState.selectedRoom || !appState.dayClipboard) return;
+            
             appState.events[appState.selectedRoom][dayIdx] = JSON.parse(JSON.stringify(appState.dayClipboard));
-            renderAllTimelines();
+            renderAllTimelines(); // Re-renders the timeline instantly to show paste success
             await saveConfigToServer();
         }
 
         // ==========================================
-        // 8. IMPORT LOCAL CONFIG.JSON
+        // 8. IMPORT / EXPORT LOCAL CONFIG.JSON
         // ==========================================
+        function exportConfigToJSON() {
+            // Build the JSON object exactly like the old python server did
+            const payload = {
+                events: appState.events,
+                lastUpdated: new Date().toISOString()
+            };
+            
+            const dataStr = JSON.stringify(payload, null, 4);
+            const blob = new Blob([dataStr], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'config_backup.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
         function importLocalConfig(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -553,9 +605,9 @@
                 try {
                     const data = JSON.parse(e.target.result);
                     if (data.events) {
-                        if (confirm("Are you sure you want to overwrite your ENTIRE Firebase schedule with this local config.json file?")) {
+                        // Leaving this one confirm dialog because uploading a file wipes the ENTIRE house schedule
+                        if (confirm("Are you sure you want to overwrite your ENTIRE Firebase schedule with this file?")) {
                             
-                            // --- LEGACY MIGRATION: Convert old numeric IDs to new Room Codes ---
                             const oldToNewMap = {
                                 '1': 'gf_livingroom', '2': 'gf_kitchen', '3': 'gf_office', '4': 'gf_entrance',
                                 '5': 'ff_parents', '6': 'ff_bathparents', '7': 'ff_julien', '8': 'ff_nico',
@@ -564,14 +616,12 @@
                             
                             let migratedEvents = {};
                             for (let key in data.events) {
-                                // Translate the key if it's a number, otherwise keep it as-is
                                 let newKey = oldToNewMap[key] || key;
                                 migratedEvents[newKey] = data.events[key];
                             }
                             
                             appState.events = migratedEvents;
                             
-                            // Re-apply array safety checks
                             appState.rooms.forEach(r => {
                                 if (!appState.events[r.id]) {
                                     appState.events[r.id] = [[],[],[],[],[],[],[]];
@@ -586,7 +636,6 @@
 
                             renderAllTimelines();
                             await saveConfigToServer();
-                            alert("Successfully imported and saved to Firebase! Your schedule is now live.");
                         }
                     } else {
                         alert("Invalid config.json format. No 'events' object found.");
@@ -595,7 +644,7 @@
                     console.error("Parse error:", err);
                     alert("Error reading the JSON file.");
                 }
-                event.target.value = ''; // Reset file input so you can select the same file again if needed
+                event.target.value = ''; 
             };
             reader.readAsText(file);
         }

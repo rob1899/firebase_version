@@ -1,0 +1,6 @@
+ToDo:
+
+1. improve backup -> done (31.03.2026)
+2. improve design
+3. add vacation button
+4. add temporary room temp changers

@@ -335,20 +335,25 @@
                         if (!Array.isArray(appState.rooms)) {
                             appState.rooms = Object.values(appState.rooms);
                         }
-                        // Same for events: { roomId: { dayIndex: [...] } }
-                        if (appState.events && !Array.isArray(appState.events)) {
+                        // Firebase serialises numeric-keyed objects as {"0":{...},"1":{...}}.
+                        // Rebuild events so day indices are numeric keys (0-6) and each
+                        // day's blocks are a proper array, matching how the app accesses them.
+                        if (appState.events) {
                             Object.keys(appState.events).forEach(roomId => {
-                                if (!Array.isArray(appState.events[roomId])) {
-                                    const days = appState.events[roomId];
-                                    Object.keys(days).forEach(dayIdx => {
-                                        if (!Array.isArray(days[dayIdx])) {
-                                            days[dayIdx] = Object.values(days[dayIdx]);
-                                        }
-                                    });
+                                const days = appState.events[roomId] || {};
+                                const rebuilt = {};
+                                for (let i = 0; i < 7; i++) {
+                                    const day = days[i] || days[String(i)] || {};
+                                    rebuilt[i] = Array.isArray(day)
+                                        ? day
+                                        : Object.values(day);
                                 }
+                                appState.events[roomId] = rebuilt;
                             });
                         }
                         console.log("Successfully loaded config from Firebase Cloud!");
+                        console.log(`Rooms loaded: ${appState.rooms.length}`);
+                        console.log(`Event rooms: ${Object.keys(appState.events).length}, sample day 0 blocks: ${(appState.events[appState.rooms[0]?.id]?.[0] || []).length}`);
                     }
                 } else {
                     console.log("Firebase database is empty. Starting fresh.");

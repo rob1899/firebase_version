@@ -6,8 +6,15 @@
     <title>Smart Heating Schedule Controller</title>
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <!-- Firebase SDKs loaded via Firebase Hosting reserved URLs.
+         Config is injected automatically by Firebase Hosting at runtime
+         and never appears in source code. See:
+         https://firebase.google.com/docs/hosting/reserved-urls -->
+    <script src="/__/firebase/8.10.1/firebase-app.js"></script>
+    <script src="/__/firebase/8.10.1/firebase-database.js"></script>
+    <script src="/__/firebase/init.js"></script>
+    <!-- Local OAuth config (not committed to version control) -->
+    <script src="/config.js"></script>
 
     <style>
         /* Custom scrollbar for a cleaner look */
@@ -228,28 +235,26 @@
         // ==========================================
 
         // --- GOOGLE API CONFIGURATION ---
-        const CLIENT_ID = '793409424530-7il05gt5md7j26dgv9n5kvucbdqc8iu3.apps.googleusercontent.com';
-        const LOGIN_HINT = 'mader.rob@gmail.com'; 
+        // CLIENT_ID and LOGIN_HINT are loaded from /config.js (not in version control).
+        const CLIENT_ID = APP_CONFIG.CLIENT_ID;
+        const LOGIN_HINT = APP_CONFIG.LOGIN_HINT;
         const SCOPES = 'https://www.googleapis.com/auth/calendar';
         const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest';
 
-        // --- FIREBASE CONFIGURATION ---
-        // REPLACED WITH KEYS FROM FIREBASE CONSOLE!
-		const firebaseConfig = {
-		  apiKey: "AIzaSyBUlX_Zuw8ZW5RUC8v5TXXkE9LRAgYngT4",
-		  authDomain: "heatingagendacontroller.firebaseapp.com",
-		  databaseURL: "https://heatingagendacontroller-default-rtdb.europe-west1.firebasedatabase.app",
-		  projectId: "heatingagendacontroller",
-		  storageBucket: "heatingagendacontroller.firebasestorage.app",
-		  messagingSenderId: "793409424530",
-		  appId: "1:793409424530:web:18ffd589c594ab09c0ea4b"
-		};
-
-        // Initialize Firebase
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
-        }
+        // Firebase is initialized by /__/firebase/init.js (loaded in <head>).
+        // No config or credentials belong in this file.
         const db = firebase.database();
+
+        // Escapes a string for safe insertion into HTML contexts (attributes and text nodes).
+        // Use whenever data from Firebase or user input is placed into innerHTML.
+        function escapeHtml(str) {
+            return String(str ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
 
         // Default layout for a brand new, empty database
         const DEFAULT_ROOMS = [
@@ -298,7 +303,7 @@
                 }
             } catch (e) { 
                 console.error("Firebase connection error:", e); 
-                alert("Failed to connect to Firebase. Check your firebaseConfig keys in the HTML!");
+                alert("Failed to connect to Firebase. Check that /__/firebase/init.js is loading correctly (requires Firebase Hosting).");
             }
         }
 
@@ -365,7 +370,7 @@
                 btn.id = `room-btn-${room.id}`;
                 
                 // Added the temperature span using the room.code
-                btn.innerHTML = `<span class="truncate">${room.name}</span> <span id="sidebar-temp-${room.code}" class="text-xs text-slate-400 font-bold ml-2 whitespace-nowrap"></span>`;
+                btn.innerHTML = `<span class="truncate">${escapeHtml(room.name)}</span> <span id="sidebar-temp-${escapeHtml(room.code)}" class="text-xs text-slate-400 font-bold ml-2 whitespace-nowrap"></span>`;
                 
                 if (room.floor === 'GF') gfContainer.appendChild(btn);
                 else ffContainer.appendChild(btn);
@@ -498,18 +503,41 @@
             const div = document.createElement('div');
             div.className = 'grid grid-cols-12 gap-2 items-center room-setting-row';
             div.dataset.id = room.id;
-            div.innerHTML = `
-                <input type="text" class="col-span-3 border border-slate-300 rounded p-2 text-sm s-name" placeholder="Living Room" value="${room.name}">
-                <input type="text" class="col-span-3 border border-slate-300 rounded p-2 text-sm s-code" placeholder="GF_Living" value="${room.code}">
-                <input type="text" class="col-span-4 border border-slate-300 rounded p-2 text-sm s-calid" placeholder="Calendar ID or blank to auto-detect" value="${room.calId}">
-                <div class="col-span-2 flex gap-2 items-center">
-                    <select class="border border-slate-300 rounded p-2 text-sm s-floor w-full">
-                        <option value="GF" ${room.floor === 'GF' ? 'selected' : ''}>GF</option>
-                        <option value="FF" ${room.floor === 'FF' ? 'selected' : ''}>FF</option>
-                    </select>
-                    <button onclick="this.parentElement.parentElement.remove()" class="text-red-500 hover:text-red-700 p-1"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
-                </div>
+
+            // Build inputs with setAttribute so Firebase data is never parsed as HTML.
+            const nameInput = document.createElement('input');
+            nameInput.type = 'text';
+            nameInput.className = 'col-span-3 border border-slate-300 rounded p-2 text-sm s-name';
+            nameInput.placeholder = 'Living Room';
+            nameInput.value = room.name;
+
+            const codeInput = document.createElement('input');
+            codeInput.type = 'text';
+            codeInput.className = 'col-span-3 border border-slate-300 rounded p-2 text-sm s-code';
+            codeInput.placeholder = 'GF_Living';
+            codeInput.value = room.code;
+
+            const calIdInput = document.createElement('input');
+            calIdInput.type = 'text';
+            calIdInput.className = 'col-span-4 border border-slate-300 rounded p-2 text-sm s-calid';
+            calIdInput.placeholder = 'Calendar ID or blank to auto-detect';
+            calIdInput.value = room.calId;
+
+            // Floor select and delete button are static markup — no user data injected.
+            const controlsDiv = document.createElement('div');
+            controlsDiv.className = 'col-span-2 flex gap-2 items-center';
+            controlsDiv.innerHTML = `
+                <select class="border border-slate-300 rounded p-2 text-sm s-floor w-full">
+                    <option value="GF" ${room.floor === 'GF' ? 'selected' : ''}>GF</option>
+                    <option value="FF" ${room.floor === 'FF' ? 'selected' : ''}>FF</option>
+                </select>
+                <button onclick="this.parentElement.parentElement.remove()" class="text-red-500 hover:text-red-700 p-1"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
             `;
+
+            div.appendChild(nameInput);
+            div.appendChild(codeInput);
+            div.appendChild(calIdInput);
+            div.appendChild(controlsDiv);
             return div;
         }
 

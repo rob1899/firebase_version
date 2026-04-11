@@ -330,6 +330,24 @@
                     const data = snapshot.val();
                     if (data && data.rooms) {
                         Object.assign(appState, data);
+                        // Firebase Realtime Database serialises arrays as keyed objects.
+                        // Convert rooms back to a proper array if needed.
+                        if (!Array.isArray(appState.rooms)) {
+                            appState.rooms = Object.values(appState.rooms);
+                        }
+                        // Same for events: { roomId: { dayIndex: [...] } }
+                        if (appState.events && !Array.isArray(appState.events)) {
+                            Object.keys(appState.events).forEach(roomId => {
+                                if (!Array.isArray(appState.events[roomId])) {
+                                    const days = appState.events[roomId];
+                                    Object.keys(days).forEach(dayIdx => {
+                                        if (!Array.isArray(days[dayIdx])) {
+                                            days[dayIdx] = Object.values(days[dayIdx]);
+                                        }
+                                    });
+                                }
+                            });
+                        }
                         console.log("Successfully loaded config from Firebase Cloud!");
                     }
                 } else {
@@ -1249,21 +1267,26 @@
         }
 
         // Gate the entire app on authentication state.
-        // onAuthStateChanged fires once on page load (with null if not logged in)
-        // and again whenever the user signs in or out.
-        let appInitialised = false;
+        // onAuthStateChanged fires once on page load (existing session or not)
+        // and again on every sign-in / sign-out.
         firebase.auth().onAuthStateChanged(async (user) => {
             if (user) {
-                // Signed in — hide login screen and boot the app
+                // Reset appState so stale data from a previous session never bleeds through.
+                appState = {
+                    rooms: [],
+                    selectedRoom: null,
+                    events: {},
+                    clipboard: null,
+                    roomClipboard: null,
+                    vacation: null,
+                    demoMode: false,
+                    liveTemps: {}
+                };
                 document.getElementById('login-screen').classList.add('hidden');
-                if (!appInitialised) {
-                    appInitialised = true;
-                    await init();
-                }
+                await init();
             } else {
-                // Signed out — show login screen and reset state
+                // Signed out — show login screen
                 document.getElementById('login-screen').classList.remove('hidden');
-                appInitialised = false;
             }
         });
     </script>

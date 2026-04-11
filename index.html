@@ -335,18 +335,20 @@
                         if (!Array.isArray(appState.rooms)) {
                             appState.rooms = Object.values(appState.rooms);
                         }
-                        // Firebase serialises numeric-keyed objects as {"0":{...},"1":{...}}.
-                        // Rebuild events so day indices are numeric keys (0-6) and each
-                        // day's blocks are a proper array, matching how the app accesses them.
+                        // Firebase serialises all numeric-keyed arrays as objects:
+                        //   events[roomId][dayIndex][blockIndex] → {"0":{...},"1":{...}}
+                        // Rebuild every level so the app can access events[roomId][i] as
+                        // a plain array of block objects.
                         if (appState.events) {
                             Object.keys(appState.events).forEach(roomId => {
                                 const days = appState.events[roomId] || {};
                                 const rebuilt = {};
                                 for (let i = 0; i < 7; i++) {
-                                    const day = days[i] || days[String(i)] || {};
-                                    rebuilt[i] = Array.isArray(day)
-                                        ? day
-                                        : Object.values(day);
+                                    const day = days[i] ?? days[String(i)] ?? {};
+                                    // day is either already an array (unlikely) or a keyed object
+                                    const blocksObj = Array.isArray(day) ? day : Object.values(day);
+                                    // each block should be a plain object — filter out any nulls
+                                    rebuilt[i] = blocksObj.filter(Boolean);
                                 }
                                 appState.events[roomId] = rebuilt;
                             });

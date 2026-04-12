@@ -900,23 +900,29 @@
             if (new Date(start) > new Date(end)) { alert("End date must be after start date."); return; }
 
             appState.vacation = { start, end, temp: parseFloat(temp) };
-            
             closeModal('vacation-modal');
             checkVacationStatus();
             await saveConfigToServer();
-            saveConfigToServer();
         }
 
         async function endVacation() {
             appState.vacation = null;
             checkVacationStatus();
             await saveConfigToServer();
-            saveConfigToServer();
         }
 
-        function checkVacationStatus() {
+        async function checkVacationStatus() {
             const banner = document.getElementById('vacation-banner');
             if (appState.vacation) {
+                // Auto-expire if end date has passed
+                const end = new Date(appState.vacation.end);
+                end.setHours(23, 59, 59, 999);
+                if (end < new Date()) {
+                    appState.vacation = null;
+                    await saveConfigToServer();
+                    banner.classList.add('hidden');
+                    return;
+                }
                 document.getElementById('vac-temp-disp').innerText = appState.vacation.temp;
                 const sDate = new Date(appState.vacation.start).toLocaleDateString();
                 const eDate = new Date(appState.vacation.end).toLocaleDateString();

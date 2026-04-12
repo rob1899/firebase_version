@@ -158,6 +158,12 @@
                 <div class="flex items-center gap-3">
                     <h2 id="current-room-title" class="text-xl font-bold text-slate-800">Select a Room</h2>
                     <span id="main-temp-display" class="text-sm font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 shadow-sm hidden transition-all"></span>
+                    <div id="override-controls" class="hidden flex items-center gap-1">
+                        <button onclick="adjustOverride(-1)" class="w-7 h-7 flex items-center justify-center bg-white border border-slate-300 rounded-md text-slate-700 hover:bg-slate-50 font-bold text-lg leading-none shadow-sm transition-colors">−</button>
+                        <span id="override-display" class="text-sm font-semibold text-slate-600 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded min-w-[64px] text-center"></span>
+                        <button onclick="adjustOverride(+1)" class="w-7 h-7 flex items-center justify-center bg-white border border-slate-300 rounded-md text-slate-700 hover:bg-slate-50 font-bold text-lg leading-none shadow-sm transition-colors">+</button>
+                        <button onclick="clearOverride()" class="ml-1 text-xs text-slate-400 hover:text-red-500 transition-colors" title="Cancel override">✕</button>
+                    </div>
                 </div>
                 <div class="flex gap-2">
                     <button onclick="copyRoom()" class="px-3 py-2 bg-white border border-slate-300 text-slate-700 rounded shadow-sm hover:bg-slate-50 flex items-center gap-2 text-sm transition-colors">
@@ -388,7 +394,8 @@
         // --- INITIALIZATION ---
         async function init() {
             await loadConfigFromServer();
-            listenForLiveTemperatures(); // <-- Start listening to Firebase immediately
+            listenForLiveTemperatures();
+            listenForOverrides();
 
             // Populate defaults if database was empty
             if (!appState.rooms || appState.rooms.length === 0) appState.rooms = DEFAULT_ROOMS;
@@ -481,7 +488,8 @@
             const room = appState.rooms.find(r => r.id === roomId);
             document.getElementById('current-room-title').innerText = room ? room.name : 'Unknown Room';
             renderAllTimelines();
-            updateLiveTempDisplays(); // <-- Update header when switching rooms
+            updateLiveTempDisplays();
+            updateOverrideDisplay();
         }
 
         function getTempColor(temp) {
@@ -966,6 +974,84 @@
 
 
         // ==========================================
+        //         TEMPERATURE OVERRIDES
+        // ==========================================
+
+        // Returns the scheduled temp for a room at the current time today.
+        function getScheduledTemp(roomId) {
+            const now = new Date();
+            const dayIndex = now.getDay() === 0 ? 6 : now.getDay() - 1; // Mon=0, Sun=6
+            const timeMins = now.getHours() * 60 + now.getMinutes();
+            const blocks = (appState.events[roomId] || {})[dayIndex] || [];
+            for (const block of blocks) {
+                if (timeMins >= block.start && timeMins < block.end) return block.temp;
+            }
+            return null;
+        }
+
+        async function adjustOverride(delta) {
+            const roomId = appState.selectedRoom;
+            if (!roomId) return;
+            const room = appState.rooms.find(r => r.id === roomId);
+            if (!room) return;
+
+            // Start from existing override temp, or current scheduled temp, or 20
+            const existing = appState.overrides && appState.overrides[room.code];
+            const base = existing ? existing.temp : (getScheduledTemp(roomId) ?? 20);
+            const newTemp = Math.round(base + delta); // 1.0°C steps
+            const clipped = Math.min(30, Math.max(10, newTemp));
+            const scheduledTemp = getScheduledTemp(roomId);
+
+            const override = { temp: clipped, scheduled_temp: scheduledTemp };
+            await db.ref(`heatingConfig/overrides/${room.code}`).set(override);
+        }
+
+        async function clearOverride() {
+            const roomId = appState.selectedRoom;
+            if (!roomId) return;
+            const room = appState.rooms.find(r => r.id === roomId);
+            if (!room) return;
+            await db.ref(`heatingConfig/overrides/${room.code}`).remove();
+        }
+
+        function listenForOverrides() {
+            db.ref('heatingConfig/overrides').on('value', snapshot => {
+                appState.overrides = snapshot.exists() ? snapshot.val() : {};
+                updateOverrideDisplay();
+            });
+        }
+
+        function updateOverrideDisplay() {
+            const controls = document.getElementById('override-controls');
+            const display = document.getElementById('override-display');
+            if (!controls || !display) return;
+
+            // Hide controls when no room is selected
+            if (!appState.selectedRoom) {
+                controls.classList.add('hidden');
+                return;
+            }
+
+            const room = appState.rooms.find(r => r.id === appState.selectedRoom);
+            if (!room) return;
+
+            controls.classList.remove('hidden');
+            const override = appState.overrides && appState.overrides[room.code];
+            if (override) {
+                // Active override — show in orange with distinct label
+                display.textContent = `Override: ${override.temp}°C`;
+                display.classList.remove('bg-slate-50', 'border-slate-200', 'text-slate-600');
+                display.classList.add('bg-orange-50', 'border-orange-200', 'text-orange-600');
+            } else {
+                // No override — show current scheduled temp in neutral style
+                const scheduled = getScheduledTemp(appState.selectedRoom);
+                display.textContent = scheduled !== null ? `${scheduled}°C` : '—';
+                display.classList.remove('bg-orange-50', 'border-orange-200', 'text-orange-600');
+                display.classList.add('bg-slate-50', 'border-slate-200', 'text-slate-600');
+            }
+        }
+
+        // ==========================================
         //         AUTHENTICATION
         // ==========================================
 
@@ -1009,7 +1095,8 @@
                     roomClipboard: null,
                     vacation: null,
                     demoMode: false,
-                    liveTemps: {}
+                    liveTemps: {},
+                    overrides: {}
                 };
                 document.getElementById('login-screen').classList.add('hidden');
                 await init();

@@ -995,11 +995,6 @@
             await firebase.auth().signOut();
         }
 
-        // In local dev (non-Firebase-Hosting hostname) skip the login screen
-        // by signing in anonymously against the real Firebase Auth service.
-        const isDev = !location.hostname.endsWith('.web.app') &&
-                      !location.hostname.endsWith('.firebaseapp.com');
-
         // Gate the entire app on authentication state.
         // onAuthStateChanged fires once on page load (existing session or not)
         // and again on every sign-in / sign-out.
@@ -1018,13 +1013,6 @@
                 };
                 document.getElementById('login-screen').classList.add('hidden');
                 await init();
-            } else if (isDev) {
-                // In dev, attempt anonymous sign-in instead of showing the login screen.
-                // onAuthStateChanged will fire again once it resolves.
-                firebase.auth().signInAnonymously().catch(() => {
-                    // Anonymous auth not enabled in this project — fall back to login screen
-                    document.getElementById('login-screen').classList.remove('hidden');
-                });
             } else {
                 // Signed out — show login screen
                 document.getElementById('login-screen').classList.remove('hidden');

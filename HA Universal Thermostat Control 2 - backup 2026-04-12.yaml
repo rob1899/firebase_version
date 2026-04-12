@@ -1,0 +1,150 @@
+alias: Heating - Universal Thermostat Control2
+description: Applies heating logic based on delta between nominal and actual temps.
+triggers:
+  - trigger: state
+    entity_id:
+      - input_number.nominal_temp_gf_entrance
+      - input_number.nominal_temp_gf_livingroom
+      - input_number.nominal_temp_gf_kitchen
+      - input_number.nominal_temp_gf_office
+      - input_number.nominal_temp_ff_parents
+      - input_number.nominal_temp_ff_bathparents
+      - input_number.nominal_temp_ff_julien
+      - input_number.nominal_temp_ff_nico
+      - input_number.nominal_temp_ff_sam
+      - input_number.nominal_temp_ff_bathkids
+  - trigger: state
+    entity_id:
+      - sensor.th_gf_entrance_temperature_2
+      - sensor.th_gf_livingroom_temperature_2
+      - sensor.th_gf_office_temperature_2
+      - sensor.th_gf_kitchen_temperature_2
+      - sensor.th_ff_bathkids_temperature_2
+      - sensor.th_ff_bathparents_temperature_2
+      - sensor.th_ff_parents_temperature_2
+      - sensor.th_ff_sam_temperature_2
+      - sensor.th_ff_nico_temperature_2
+      - sensor.th_ff_julien_temperature_2
+conditions:
+  - condition: template
+    value_template: "{{ room_key != 'unknown' }}"
+  - condition: template
+    value_template: "{{ states(nominal_temp_entity) not in ['unknown', 'unavailable'] }}"
+  - condition: template
+    value_template: "{{ states(actual_temp_entity) not in ['unknown', 'unavailable'] }}"
+  - condition: template
+    value_template: "{{ states(thermostat_entity) not in ['unknown', 'unavailable'] }}"
+actions:
+  - variables:
+      nominal: "{{ states(nominal_temp_entity) | float(17) }}"
+      actual: "{{ states(actual_temp_entity) | float(17) }}"
+      delta: "{{ nominal - actual }}"
+      actual_set_temperature: "{{ state_attr(thermostat_entity, \"temperature\") | float(0) }}"
+      action_taken: Not set (Error)
+      high: >-
+        {{ states('input_number.threshold_temperature_delta_high') | float(1.0)
+        }}
+      low: >-
+        {{ states('input_number.threshold_temperature_delta_low') | float(0.1)
+        }}
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ delta > high }}"
+        sequence:
+          - variables:
+              target_temp: 30
+              action_taken: Set MAX ({{ target_temp }}°C)
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ target_temp | float(-1) != actual_set_temperature |
+                      float(-2) }}
+                sequence:
+                  - target:
+                      entity_id: "{{ thermostat_entity }}"
+                    data:
+                      temperature: "{{ target_temp }}"
+                    action: climate.set_temperature
+      - conditions:
+          - condition: template
+            value_template: "{{ delta > low and delta <= high }}"
+        sequence:
+          - variables:
+              target_temp: "{{ (nominal + 1) | round(2) }}"
+              action_taken: Set Nominal + 1
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ target_temp | float(-1) != actual_set_temperature |
+                      float(-2) }}
+                sequence:
+                  - target:
+                      entity_id: "{{ thermostat_entity }}"
+                    data:
+                      temperature: "{{ target_temp }}"
+                    action: climate.set_temperature
+      - conditions:
+          - condition: template
+            value_template: "{{ delta <= low }}"
+        sequence:
+          - variables:
+              target_temp: "{{ nominal }}"
+              action_taken: Set Nominal
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ target_temp | float(-1) != actual_set_temperature |
+                      float(-2) }}
+                sequence:
+                  - target:
+                      entity_id: "{{ thermostat_entity }}"
+                    data:
+                      temperature: "{{ target_temp }}"
+                    action: climate.set_temperature
+  - if:
+      - condition: template
+        value_template: >-
+          {{ target_temp | default(-1) | float != actual_set_temperature | float
+          }}
+    then:
+      - action: notify.send_message
+        target:
+          entity_id: notify.automation_log
+        data:
+          title: "🔥 Heating: {{ room_key }}"
+          message: |
+            {{ {
+                "title": "🔥 Heating:",
+                "room": room_key,
+                "action": action_taken,
+                "details": {
+                    "target_temp": target_temp | default('N/A'),
+                    "delta": delta | round(2),
+                    "nominal": nominal | round(2),
+                    "actual": actual | round(2),
+                    "current_set_temp": actual_set_temperature | round(2)
+                }
+            } | to_json }}
+  - action: rest_command.update_firebase_temp
+    data:
+      room_code: "{{ room_key }}"
+      temp_value: "{{ actual }}"
+variables:
+  room_key: |-
+    {% set entity_id = trigger.entity_id | default('unknown_id') %}
+    {% if entity_id.startswith('input_number.nominal_temp_') %}
+      {{ entity_id | replace('input_number.nominal_temp_', '') }}
+    {% elif entity_id.startswith('sensor.th_') %}
+      {{ entity_id | replace('sensor.th_', '') | replace('_temperature_2', '') }}
+    {% else %}
+      unknown
+    {% endif %}
+  nominal_temp_entity: input_number.nominal_temp_{{ room_key }}
+  actual_temp_entity: sensor.th_{{ room_key }}_temperature_2
+  thermostat_entity: climate.rt_{{ room_key }}
+mode: queued
+max_exceeded: silent

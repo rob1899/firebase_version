@@ -1,0 +1,77 @@
+alias: Heating - Apply Firebase Schedule
+triggers:
+  - minutes: /5
+    trigger: time_pattern
+actions:
+  - repeat:
+      for_each: "{{ rooms }}"
+      sequence:
+        - variables:
+            room_code: "{{ repeat.item }}"
+            room_schedule: "{{ state_attr('sensor.heating_schedule_master', room_code) }}"
+            override: "{{ state_attr('sensor.heating_overrides', room_code) }}"
+            scheduled_temp: >
+              {% set ns = namespace(target=17.0) %}
+              {% if room_schedule and room_schedule[day] %}
+                {% for event in room_schedule[day] %}
+                  {% if time_mins >= event.start and time_mins < event.end %}
+                    {% set ns.target = event.temp %}
+                  {% endif %}
+                {% endfor %}
+              {% endif %}
+              {{ ns.target }}
+            target_temp: >
+              {% if override and override.scheduled_temp is defined %}
+                {% if (override.scheduled_temp | float) != (scheduled_temp | float) %}
+                  {{ scheduled_temp }}
+                {% else %}
+                  {{ override.temp }}
+                {% endif %}
+              {% else %}
+                {{ scheduled_temp }}
+              {% endif %}
+            should_clear_override: >
+              {{ override and override.scheduled_temp is defined and
+                 (override.scheduled_temp | float) != (scheduled_temp | float) }}
+            current_slider_temp: >-
+              {{ states('input_number.nominal_temp_' ~ room_code) | float(-99) }}
+            needs_update: >-
+              {{ current_slider_temp != -99 and (current_slider_temp | float) !=
+                 (target_temp | float) }}
+        - if:
+            - condition: template
+              value_template: "{{ needs_update or should_clear_override }}"
+          then:
+            - action: notify.send_message
+              target:
+                entity_id: notify.automation_log
+              data:
+                title: "🌡️ {{ room_code }}"
+                message: >
+                  {% if should_clear_override %}
+                    Override expired (schedule moved to {{ scheduled_temp }}°C). Applying schedule.
+                  {% elif override %}
+                    Override active ({{ override.temp }}°C). Applying to slider.
+                  {% else %}
+                    Schedule change: {{ current_slider_temp }}°C → {{ target_temp }}°C.
+                  {% endif %}
+            - action: input_number.set_value
+              target:
+                entity_id: input_number.nominal_temp_{{ room_code }}
+              data:
+                value: "{{ target_temp }}"
+mode: queued
+variables:
+  rooms:
+    - gf_livingroom
+    - gf_kitchen
+    - gf_office
+    - gf_entrance
+    - ff_parents
+    - ff_bathparents
+    - ff_julien
+    - ff_nico
+    - ff_sam
+    - ff_bathkids
+  day: "{{ now().weekday() | string }}"
+  time_mins: "{{ (now().hour * 60) + now().minute }}"

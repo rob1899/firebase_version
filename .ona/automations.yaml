@@ -1,0 +1,7 @@
+services:
+  firebase-emulator:
+    name: Firebase Hosting Emulator
+    description: Serves the app locally via Firebase Hosting emulator so /__/firebase/* URLs resolve correctly
+    command: firebase emulators:start --only hosting
+    ready_on:
+      log_contains: "hosting: Local server: "

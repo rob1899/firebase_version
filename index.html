@@ -6,16 +6,28 @@
     <title>Smart Heating Schedule Controller</title>
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- Firebase SDKs loaded via Firebase Hosting reserved URLs.
-         Config is injected automatically by Firebase Hosting at runtime
-         and never appears in source code. See:
-         https://firebase.google.com/docs/hosting/reserved-urls -->
+    <!-- Firebase SDKs via Firebase Hosting reserved URLs. -->
     <script src="/__/firebase/8.10.1/firebase-app.js"></script>
     <script src="/__/firebase/8.10.1/firebase-database.js"></script>
     <script src="/__/firebase/8.10.1/firebase-auth.js"></script>
     <script src="/__/firebase/init.js"></script>
-    <!-- Local OAuth config (not committed to version control) -->
-    <script src="/config.js"></script>
+    <script>
+        // /__/firebase/init.js only injects config when served via Firebase Hosting.
+        // When running locally (emulator without auth, file server, etc.) it sets
+        // firebaseConfig = undefined, so we initialise explicitly as a fallback.
+        if (!firebase.apps.length) {
+            firebase.initializeApp({
+                apiKey: "AIzaSyBUlX_Zuw8ZW5RUC8v5TXXkE9LRAgYngT4",
+                authDomain: "heatingagendacontroller.firebaseapp.com",
+                databaseURL: "https://heatingagendacontroller-default-rtdb.europe-west1.firebasedatabase.app",
+                projectId: "heatingagendacontroller",
+                storageBucket: "heatingagendacontroller.firebasestorage.app",
+                messagingSenderId: "793409424530",
+                appId: "1:793409424530:web:18ffd589c594ab09c0ea4b"
+            });
+        }
+    </script>
+
 
     <style>
         /* Custom scrollbar for a cleaner look */
@@ -104,9 +116,7 @@
             <button id="demo-toggle" onclick="toggleDemoMode()" class="px-4 py-2 bg-slate-200 text-slate-700 rounded-md text-sm font-medium hover:bg-slate-300 transition-colors hidden">
                 Demo Mode: ON
             </button>
-            <button id="auth-btn" onclick="handleAuthClick()" class="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 shadow-sm transition-colors">
-                Connect Google Calendar
-            </button>
+
             <button onclick="openVacationModal()" class="px-4 py-2 bg-amber-500 text-white rounded-md text-sm font-medium hover:bg-amber-600 shadow-sm transition-colors flex items-center gap-2">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                 Vacation
@@ -159,15 +169,7 @@
                         Paste Room
                     </button>
                     
-                    <button onclick="importFromGoogle()" id="import-btn" class="px-3 py-2 bg-purple-600 text-white rounded shadow-sm hover:bg-purple-700 flex items-center gap-2 text-sm transition-colors">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
-                        Import from Google
-                    </button>
 
-                    <button onclick="syncToGoogle()" id="sync-btn" class="px-3 py-2 bg-green-600 text-white rounded shadow-sm hover:bg-green-700 flex items-center gap-2 text-sm hidden transition-colors">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                        Sync Current Room
-                    </button>
                 </div>
             </div>
 
@@ -269,11 +271,7 @@
         // ==========================================
 
         // --- GOOGLE API CONFIGURATION ---
-        // CLIENT_ID and LOGIN_HINT are loaded from /config.js (not in version control).
-        const CLIENT_ID = APP_CONFIG.CLIENT_ID;
-        const LOGIN_HINT = APP_CONFIG.LOGIN_HINT;
-        const SCOPES = 'https://www.googleapis.com/auth/calendar';
-        const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest';
+
 
         // Firebase is initialized by /__/firebase/init.js (loaded in <head>).
         // No config or credentials belong in this file.
@@ -292,8 +290,16 @@
 
         // Default layout for a brand new, empty database
         const DEFAULT_ROOMS = [
-            { id: '1', code: 'gf_livingroom', name: 'Living Room', floor: 'GF', calId: '291863072a9d603d0303b33eed21094f9725bc580cc7aebb5cf6013b097a5dce@group.calendar.google.com' },
-            { id: '2', code: 'ff_parents', name: 'Parents Bedroom', floor: 'FF', calId: '94c0864eb00c58a08b4072fe183c064e13051383c14474ce757f38fdc428f880@group.calendar.google.com' }
+            { id: '1',  code: 'gf_livingroom',  name: 'Living Room',      floor: 'GF' },
+            { id: '2',  code: 'gf_kitchen',     name: 'Kitchen',          floor: 'GF' },
+            { id: '3',  code: 'gf_office',      name: 'Office',           floor: 'GF' },
+            { id: '4',  code: 'gf_entrance',    name: 'Entrance',         floor: 'GF' },
+            { id: '5',  code: 'ff_parents',     name: 'Parents Bedroom',  floor: 'FF' },
+            { id: '6',  code: 'ff_sam',         name: 'Sam',              floor: 'FF' },
+            { id: '7',  code: 'ff_julien',      name: 'Julien',           floor: 'FF' },
+            { id: '8',  code: 'ff_nico',        name: 'Nico',             floor: 'FF' },
+            { id: '9',  code: 'ff_bathkids',    name: 'Kids Bathroom',    floor: 'FF' },
+            { id: '10', code: 'ff_bathparents', name: 'Parents Bathroom', floor: 'FF' },
         ];
 
         const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -328,34 +334,31 @@
                 const snapshot = await db.ref('heatingConfig').once('value');
                 if (snapshot.exists()) {
                     const data = snapshot.val();
-                    if (data && data.rooms) {
-                        Object.assign(appState, data);
-                        // Firebase Realtime Database serialises arrays as keyed objects.
-                        // Convert rooms back to a proper array if needed.
-                        if (!Array.isArray(appState.rooms)) {
-                            appState.rooms = Object.values(appState.rooms);
-                        }
-                        // Firebase serialises all numeric-keyed arrays as objects:
-                        //   events[roomId][dayIndex][blockIndex] → {"0":{...},"1":{...}}
-                        // Rebuild every level so the app can access events[roomId][i] as
-                        // a plain array of block objects.
-                        if (appState.events) {
-                            Object.keys(appState.events).forEach(roomId => {
-                                const days = appState.events[roomId] || {};
-                                const rebuilt = {};
-                                for (let i = 0; i < 7; i++) {
-                                    const day = days[i] ?? days[String(i)] ?? {};
-                                    // day is either already an array (unlikely) or a keyed object
-                                    const blocksObj = Array.isArray(day) ? day : Object.values(day);
-                                    // each block should be a plain object — filter out any nulls
-                                    rebuilt[i] = blocksObj.filter(Boolean);
-                                }
-                                appState.events[roomId] = rebuilt;
-                            });
-                        }
-                        console.log("Successfully loaded config from Firebase Cloud!");
-                        console.log(`Rooms loaded: ${appState.rooms.length}`);
-                        console.log(`Event rooms: ${Object.keys(appState.events).length}, sample day 0 blocks: ${(appState.events[appState.rooms[0]?.id]?.[0] || []).length}`);
+                    // Events are keyed by room.code in the database (e.g. "gf_livingroom")
+                    // so Home Assistant can address them by code. Internally the app uses
+                    // room.id as the key, so we re-key here after loading.
+                    if (data && data.events) {
+                        // Rebuild events: for each room in DEFAULT_ROOMS, copy events from
+                        // the code-keyed database entry into an id-keyed entry.
+                        const reKeyed = {};
+                        DEFAULT_ROOMS.forEach(room => {
+                            const days = data.events[room.code] || {};
+                            const rebuilt = {};
+                            for (let i = 0; i < 7; i++) {
+                                const day = days[i] ?? days[String(i)] ?? {};
+                                const blocksObj = Array.isArray(day) ? day : Object.values(day);
+                                rebuilt[i] = blocksObj.filter(Boolean);
+                            }
+                            reKeyed[room.id] = rebuilt;
+                        });
+                        appState.events = reKeyed;
+                        // Load any other top-level state (vacation, etc.) but not rooms/events
+                        if (data.vacation) appState.vacation = data.vacation;
+                        if (data.selectedRoom) appState.selectedRoom = data.selectedRoom;
+                        console.log("Successfully loaded config from Firebase!");
+                        console.log(`Event rooms: ${Object.keys(appState.events).length}, sample day 0 blocks: ${(appState.events[DEFAULT_ROOMS[0]?.id]?.[0] || []).length}`);
+                    } else {
+                        console.log("Firebase database is empty. Starting fresh.");
                     }
                 } else {
                     console.log("Firebase database is empty. Starting fresh.");
@@ -368,8 +371,15 @@
 
         async function saveConfigToServer() {
             try {
-                await db.ref('heatingConfig').set(appState);
-                console.log("Configuration saved to Firebase Cloud!");
+                // Save events keyed by room.code so Home Assistant can address them.
+                // The app uses room.id internally, so we re-key on the way out.
+                const codeKeyedEvents = {};
+                appState.rooms.forEach(room => {
+                    codeKeyedEvents[room.code] = appState.events[room.id] || {};
+                });
+                await db.ref('heatingConfig/events').set(codeKeyedEvents);
+                if (appState.vacation !== undefined) await db.ref('heatingConfig/vacation').set(appState.vacation);
+                console.log("Configuration saved to Firebase!");
             } catch (e) {
                 console.error("Error saving to Firebase:", e);
             }
@@ -398,13 +408,6 @@
             checkVacationStatus();
             if(appState.selectedRoom) selectRoom(appState.selectedRoom);
             
-            // Boot Google Scripts
-            if (CLIENT_ID && CLIENT_ID.trim() !== "" && CLIENT_ID !== "YOUR_GOOGLE_CLIENT_ID_HERE.apps.googleusercontent.com") {
-                loadGoogleScripts();
-            } else {
-                alert("Google Client ID is missing. Google Calendar sync will not work.");
-            }
-
             window.addEventListener('resize', renderAllTimelines);
             document.addEventListener('mouseup', endInteraction);
             document.addEventListener('mousemove', handleInteraction);
@@ -558,7 +561,7 @@
             document.getElementById('settings-modal').classList.add('flex');
         }
 
-        function createSettingsRow(room = { id: 'evt_' + Date.now(), name: '', code: '', calId: '', floor: 'GF' }) {
+        function createSettingsRow(room = { id: 'evt_' + Date.now(), name: '', code: '', floor: 'GF' }) {
             const div = document.createElement('div');
             div.className = 'grid grid-cols-12 gap-2 items-center room-setting-row';
             div.dataset.id = room.id;
@@ -566,21 +569,15 @@
             // Build inputs with setAttribute so Firebase data is never parsed as HTML.
             const nameInput = document.createElement('input');
             nameInput.type = 'text';
-            nameInput.className = 'col-span-3 border border-slate-300 rounded p-2 text-sm s-name';
+            nameInput.className = 'col-span-5 border border-slate-300 rounded p-2 text-sm s-name';
             nameInput.placeholder = 'Living Room';
             nameInput.value = room.name;
 
             const codeInput = document.createElement('input');
             codeInput.type = 'text';
-            codeInput.className = 'col-span-3 border border-slate-300 rounded p-2 text-sm s-code';
-            codeInput.placeholder = 'GF_Living';
+            codeInput.className = 'col-span-5 border border-slate-300 rounded p-2 text-sm s-code';
+            codeInput.placeholder = 'gf_livingroom';
             codeInput.value = room.code;
-
-            const calIdInput = document.createElement('input');
-            calIdInput.type = 'text';
-            calIdInput.className = 'col-span-4 border border-slate-300 rounded p-2 text-sm s-calid';
-            calIdInput.placeholder = 'Calendar ID or blank to auto-detect';
-            calIdInput.value = room.calId;
 
             // Floor select and delete button are static markup — no user data injected.
             const controlsDiv = document.createElement('div');
@@ -595,7 +592,6 @@
 
             div.appendChild(nameInput);
             div.appendChild(codeInput);
-            div.appendChild(calIdInput);
             div.appendChild(controlsDiv);
             return div;
         }
@@ -610,7 +606,6 @@
                     id: row.dataset.id,
                     name: row.querySelector('.s-name').value,
                     code: row.querySelector('.s-code').value,
-                    calId: row.querySelector('.s-calid').value,
                     floor: row.querySelector('.s-floor').value
                 });
             });
@@ -701,7 +696,7 @@
             if (isResizing) {
                 isResizing = false; resizeBlock = null; resizeEdge = null; activeDayIndex = null;
                 saveConfigToServer();
-                queueGoogleSync();
+                saveConfigToServer();
             }
         }
 
@@ -780,7 +775,7 @@
             if (isResizing) {
                 isResizing = false; resizeBlock = null; resizeEdge = null; activeDayIndex = null;
                 await saveConfigToServer();
-                queueGoogleSync();
+                saveConfigToServer();
             }
         }
 
@@ -822,7 +817,7 @@
             closeModal('edit-modal');
             renderTimelineForDay(activeDayIndex);
             await saveConfigToServer();
-            queueGoogleSync();
+            saveConfigToServer();
         }
 
         async function deleteCurrentBlock() {
@@ -830,7 +825,7 @@
             closeModal('edit-modal');
             renderTimelineForDay(activeDayIndex);
             await saveConfigToServer();
-            queueGoogleSync();
+            saveConfigToServer();
         }
 
         function copyDay(dayIndex) {
@@ -850,7 +845,7 @@
             appState.events[appState.selectedRoom][dayIndex] = appState.clipboard.map(e => ({ ...e, id: 'evt_' + Math.random().toString(36).substr(2, 9) }));
             renderTimelineForDay(dayIndex);
             await saveConfigToServer();
-            queueGoogleSync();
+            saveConfigToServer();
         }
 
         function copyRoom() {
@@ -872,7 +867,7 @@
             }
             renderAllTimelines();
             await saveConfigToServer();
-            queueGoogleSync();
+            saveConfigToServer();
         }
 
         // ==========================================
@@ -901,14 +896,14 @@
             closeModal('vacation-modal');
             checkVacationStatus();
             await saveConfigToServer();
-            queueGoogleSync();
+            saveConfigToServer();
         }
 
         async function endVacation() {
             appState.vacation = null;
             checkVacationStatus();
             await saveConfigToServer();
-            queueGoogleSync();
+            saveConfigToServer();
         }
 
         function checkVacationStatus() {
@@ -968,280 +963,7 @@
             }
         }
 
-        // ==========================================
-        //         8. GOOGLE CALENDAR SYNC
-        // ==========================================
-        
-        let tokenClient; let gapiInited = false; let gisInited = false; let syncTimeout = null;
 
-        function loadGoogleScripts() {
-            if (!document.getElementById('gapi-script')) {
-                const gapiScript = document.createElement('script');
-                gapiScript.id = 'gapi-script';
-                gapiScript.src = 'https://apis.google.com/js/api.js';
-                gapiScript.onload = () => gapi.load('client', async () => {
-                    try {
-                        await gapi.client.init({ discoveryDocs: [DISCOVERY_DOC] });
-                        gapiInited = true;
-                        console.log("GAPI loaded successfully.");
-                    } catch (err) {
-                        console.error("GAPI Init Error:", err);
-                    }
-                });
-                document.body.appendChild(gapiScript);
-
-                const gisScript = document.createElement('script');
-                gisScript.src = 'https://accounts.google.com/gsi/client';
-                gisScript.onload = () => {
-                    try {
-                        let tokenParams = { 
-                            client_id: CLIENT_ID, 
-                            scope: SCOPES, 
-                            prompt: '',
-                            callback: handleAuthResponse 
-                        };
-                        if (LOGIN_HINT && LOGIN_HINT.trim() !== "") {
-                            tokenParams.login_hint = LOGIN_HINT.trim();
-                        }
-
-                        tokenClient = google.accounts.oauth2.initTokenClient(tokenParams);
-                        gisInited = true;
-                        console.log("GIS loaded successfully.");
-                    } catch (err) {
-                        console.error("GIS Init Error:", err);
-                    }
-                };
-                document.body.appendChild(gisScript);
-            }
-        }
-
-        function handleAuthClick() {
-            if (!gisInited || !gapiInited) return alert("Scripts loading. Please wait a second.");
-            tokenClient.requestAccessToken({prompt: ''});
-        }
-
-        async function handleAuthResponse(resp) {
-            if (resp.error !== undefined) throw (resp);
-            gapi.client.setToken({ access_token: resp.access_token });
-            document.getElementById('auth-btn').innerText = 'Connected';
-            document.getElementById('auth-btn').classList.replace('bg-blue-600', 'bg-green-600');
-            document.getElementById('sync-btn').classList.remove('hidden');
-        }
-
-        function queueGoogleSync() {
-            if (syncTimeout) clearTimeout(syncTimeout);
-            syncTimeout = setTimeout(() => {
-                document.getElementById('sync-btn').classList.add('animate-pulse', 'bg-amber-500');
-                document.getElementById('sync-btn').innerHTML = 'Syncing needed...';
-            }, 1000);
-        }
-
-        function getNextWeekday(baseDate, dayIndex) {
-            const d = new Date(baseDate);
-            d.setHours(0,0,0,0);
-            const currentJsDay = d.getDay(); 
-            const currentAppDay = currentJsDay === 0 ? 6 : currentJsDay - 1;
-            let diff = dayIndex - currentAppDay;
-            if (diff < 0) diff += 7;
-            d.setDate(d.getDate() + diff);
-            return d;
-        }
-
-        function formatUntilDate(d) {
-            const pad = n => String(n).padStart(2, '0');
-            return `${d.getUTCFullYear()}${pad(d.getUTCMonth()+1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
-        }
-
-        function getGoogleDateTime(baseDate, totalMinutes) {
-            const dt = new Date(baseDate);
-            if (totalMinutes >= 1440) { dt.setDate(dt.getDate() + 1); totalMinutes = 0; }
-            const y = dt.getFullYear(); const m = String(dt.getMonth() + 1).padStart(2, '0'); const dStr = String(dt.getDate()).padStart(2, '0');
-            const hrs = String(Math.floor(totalMinutes / 60)).padStart(2, '0'); const mins = String(totalMinutes % 60).padStart(2, '0');
-            return `${y}-${m}-${dStr}T${hrs}:${mins}:00`;
-        }
-
-        async function syncToGoogle() {
-            const roomId = appState.selectedRoom;
-            const room = appState.rooms.find(r => r.id === roomId);
-
-            if (!room || !room.calId) return alert(`No Calendar ID configured for this room.`);
-
-            const btn = document.getElementById('sync-btn');
-            const originalHTML = btn.innerHTML;
-            btn.innerHTML = 'Wiping old events...';
-            btn.classList.remove('animate-pulse', 'bg-amber-500');
-            
-            try {
-                let pageToken = null;
-                do {
-                    const res = await gapi.client.calendar.events.list({ calendarId: room.calId, maxResults: 2500, pageToken: pageToken });
-                    const eventsToDelete = res.result.items;
-                    for (let e of eventsToDelete) {
-                        try { await gapi.client.calendar.events.delete({ calendarId: room.calId, eventId: e.id }); } 
-                        catch(err) { console.warn('Could not delete', e.id); }
-                    }
-                    pageToken = res.result.nextPageToken;
-                } while (pageToken);
-
-                btn.innerHTML = 'Uploading new schedule...';
-
-                const rruleDays = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
-                const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-                const today = new Date(); today.setHours(0,0,0,0);
-                
-                let vStart = null, vEnd = null, isVacationActiveAndFuture = false;
-                if (appState.vacation) {
-                    vStart = new Date(appState.vacation.start); vStart.setHours(0,0,0,0);
-                    vEnd = new Date(appState.vacation.end); vEnd.setHours(23,59,59,999);
-                    if (vEnd >= today) isVacationActiveAndFuture = true;
-                }
-
-                for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
-                    const dailyEvents = appState.events[roomId][dayIndex];
-                    for (let ev of dailyEvents) {
-                        let eventPhases = [];
-                        const firstOccurrence = getNextWeekday(today, dayIndex);
-
-                        if (!isVacationActiveAndFuture) {
-                            eventPhases.push({ startBase: firstOccurrence, until: null });
-                        } else {
-                            if (firstOccurrence < vStart) {
-                                const untilDate = new Date(vStart); untilDate.setSeconds(-1); 
-                                eventPhases.push({ startBase: firstOccurrence, until: untilDate });
-                            }
-                            if (firstOccurrence <= vEnd) {
-                                const afterVacationBase = new Date(vEnd.getTime() + 1); 
-                                const postVacation = getNextWeekday(afterVacationBase, dayIndex);
-                                eventPhases.push({ startBase: postVacation, until: null });
-                            }
-                        }
-
-                        for (let phase of eventPhases) {
-                            let safeStartBase = new Date(phase.startBase);
-                            
-                            // DST BUG FIX
-                            const offsetStart = new Date(safeStartBase.getFullYear(), safeStartBase.getMonth(), safeStartBase.getDate(), 0, 0, 0).getTimezoneOffset();
-                            const offsetEnd = new Date(safeStartBase.getFullYear(), safeStartBase.getMonth(), safeStartBase.getDate(), 23, 0, 0).getTimezoneOffset();
-                            if (offsetStart !== offsetEnd) safeStartBase.setDate(safeStartBase.getDate() - 7);
-                            
-                            const startTimeStr = getGoogleDateTime(safeStartBase, ev.start);
-                            const endTimeStr = getGoogleDateTime(safeStartBase, ev.end);
-                            
-                            let rrule = `RRULE:FREQ=WEEKLY;BYDAY=${rruleDays[dayIndex]}`;
-                            if (phase.until) rrule += `;UNTIL=${formatUntilDate(phase.until)}`;
-                            
-                            const googleEvent = {
-                                summary: ev.temp.toString(),
-                                location: room.code,
-                                start: { dateTime: startTimeStr, timeZone: userTimeZone },
-                                end: { dateTime: endTimeStr, timeZone: userTimeZone },
-                                recurrence: [rrule]
-                            };
-                            await gapi.client.calendar.events.insert({ calendarId: room.calId, resource: googleEvent });
-                        }
-                    }
-                }
-
-                if (isVacationActiveAndFuture) {
-                    const vEndDt = new Date(appState.vacation.end);
-                    vEndDt.setDate(vEndDt.getDate() + 1); 
-                    
-                    const pad = n => String(n).padStart(2, '0');
-                    const vEndDateStr = `${vEndDt.getFullYear()}-${pad(vEndDt.getMonth() + 1)}-${pad(vEndDt.getDate())}`;
-
-                    const vacationEvent = {
-                        summary: appState.vacation.temp.toString() + '° (Vacation)',
-                        location: room.code,
-                        start: { date: appState.vacation.start },
-                        end: { date: vEndDateStr }
-                    };
-                    await gapi.client.calendar.events.insert({ calendarId: room.calId, resource: vacationEvent });
-                }
-                
-                btn.innerHTML = 'Synced Successfully';
-                setTimeout(() => { btn.innerHTML = originalHTML; }, 3000);
-
-            } catch (err) {
-                console.error("Sync Error:", err);
-                btn.innerHTML = 'Sync Failed';
-                btn.classList.add('bg-red-600');
-                setTimeout(() => { btn.innerHTML = originalHTML; btn.classList.remove('bg-red-600'); }, 3000);
-            }
-        }
-
-        async function importFromGoogle() {
-            const roomId = appState.selectedRoom;
-            const room = appState.rooms.find(r => r.id === roomId);
-
-            if (!room || !room.calId) return alert("No Calendar ID configured for this room.");
-            if (!confirm(`This will permanently overwrite the UI schedule for ${room.name} with whatever is currently on Google Calendar. Proceed?`)) return;
-
-            const btn = document.getElementById('import-btn');
-            const originalHTML = btn.innerHTML;
-            btn.innerHTML = 'Importing...';
-            btn.classList.add('animate-pulse');
-
-            try {
-                const res = await gapi.client.calendar.events.list({ calendarId: room.calId, singleEvents: false, maxResults: 2500, showDeleted: false });
-                const events = res.result.items;
-                
-                for(let i=0; i<7; i++) appState.events[roomId][i] = [];
-
-                events.forEach(gEv => {
-                    if(gEv.summary && gEv.summary.includes('Vacation')) return;
-
-                    if(gEv.recurrence && gEv.recurrence[0]) {
-                        const rrule = gEv.recurrence[0];
-                        const dayMatch = rrule.match(/BYDAY=([^;]+)/);
-                        
-                        if(dayMatch && gEv.start && gEv.end) {
-                            const daysMap = { 'MO':0, 'TU':1, 'WE':2, 'TH':3, 'FR':4, 'SA':5, 'SU':6 };
-                            const days = dayMatch[1].split(','); 
-                            
-                            days.forEach(dayStr => {
-                                const cleanDay = dayStr.slice(-2); 
-                                const dIdx = daysMap[cleanDay];
-                                
-                                if(dIdx !== undefined) {
-                                    let startMins = 0; let endMins = 1440;
-                                    
-                                    if (gEv.start.dateTime && gEv.end.dateTime) {
-                                        const startDt = new Date(gEv.start.dateTime);
-                                        const endDt = new Date(gEv.end.dateTime);
-                                        startMins = startDt.getHours() * 60 + startDt.getMinutes();
-                                        endMins = endDt.getHours() * 60 + endDt.getMinutes();
-                                        if (endMins === 0 && startMins > 0) endMins = 1440; 
-                                    }
-
-                                    const temp = parseFloat(gEv.summary) || 20;
-
-                                    appState.events[roomId][dIdx].push({
-                                        id: 'evt_' + Date.now() + Math.random(),
-                                        start: startMins,
-                                        end: endMins,
-                                        temp: temp
-                                    });
-                                }
-                            });
-                        }
-                    }
-                });
-
-                renderAllTimelines();
-                await saveConfigToServer();
-                
-                btn.classList.remove('animate-pulse');
-                btn.innerHTML = 'Imported!';
-                setTimeout(() => { btn.innerHTML = originalHTML; }, 3000);
-
-            } catch (err) {
-                console.error("Import Error:", err);
-                btn.classList.remove('animate-pulse');
-                btn.innerHTML = 'Import Failed';
-                btn.classList.add('bg-red-600');
-                setTimeout(() => { btn.innerHTML = originalHTML; btn.classList.remove('bg-red-600'); }, 3000);
-            }
-        }
 
         // ==========================================
         //         AUTHENTICATION
@@ -1273,6 +995,11 @@
             await firebase.auth().signOut();
         }
 
+        // In local dev (non-Firebase-Hosting hostname) skip the login screen
+        // by signing in anonymously against the real Firebase Auth service.
+        const isDev = !location.hostname.endsWith('.web.app') &&
+                      !location.hostname.endsWith('.firebaseapp.com');
+
         // Gate the entire app on authentication state.
         // onAuthStateChanged fires once on page load (existing session or not)
         // and again on every sign-in / sign-out.
@@ -1291,6 +1018,13 @@
                 };
                 document.getElementById('login-screen').classList.add('hidden');
                 await init();
+            } else if (isDev) {
+                // In dev, attempt anonymous sign-in instead of showing the login screen.
+                // onAuthStateChanged will fire again once it resolves.
+                firebase.auth().signInAnonymously().catch(() => {
+                    // Anonymous auth not enabled in this project — fall back to login screen
+                    document.getElementById('login-screen').classList.remove('hidden');
+                });
             } else {
                 // Signed out — show login screen
                 document.getElementById('login-screen').classList.remove('hidden');
